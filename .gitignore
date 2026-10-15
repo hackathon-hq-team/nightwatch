@@ -1,0 +1,30 @@
+# Секреты
+.env
+.env.*
+!.env.example
+
+# Зависимости
+node_modules/
+venv/
+.venv/
+__pycache__/
+*.pyc
+
+# Сборка
+dist/
+build/
+.next/
+out/
+coverage/
+
+# Логи
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# IDE и ОС
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
