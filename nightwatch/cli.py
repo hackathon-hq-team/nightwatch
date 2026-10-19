@@ -1,7 +1,7 @@
-"""Запуск конвейера из командной строки — для отладки промптов.
+"""Run the pipeline from the command line — for debugging prompts.
 
   python -m nightwatch.cli run --repo ../demo-app --alert scenarios/bug01.json
-  python -m nightwatch.cli models          # проверить ключ и список моделей
+  python -m nightwatch.cli models          # check the key and the model list
   python -m nightwatch.cli show inc-1234abcd
 """
 from __future__ import annotations
@@ -34,7 +34,7 @@ def cmd_run(args) -> int:
     if args.runner == "local":
         from .dev.local_runner import LocalRunner
         runner = LocalRunner(args.repo)
-    else:  # настоящий runner Тимура
+    else:  # Timur's real runner
         from runner import Runner  # type: ignore
         runner = Runner(args.repo)
     if args.verifier == "reference":
@@ -48,7 +48,7 @@ def cmd_run(args) -> int:
     inc = pipe.run(_load_alert(args.alert))
     for e in inc.events:
         print(f"{e.at:%H:%M:%S}  {e.state.value:<13} {e.message}")
-    print(f"\nИтог: {inc.state.value}  ·  ${inc.usage.cost_usd:.4f}  ·  {inc.usage.tokens} токенов  ·  "
+    print(f"\nResult: {inc.state.value}  ·  ${inc.usage.cost_usd:.4f}  ·  {inc.usage.tokens} tokens  ·  "
           f"{s.history_dir}/{inc.id}.json")
     if inc.final_patch:
         print("\n" + inc.final_patch.diff)
@@ -60,11 +60,11 @@ def cmd_models(_args) -> int:
     c = ModelClient()
     ids = c.list_models()
     for m in sorted(ids):
-        mark = "  <- сейчас" if m == c.model else ""
+        mark = "  <- current" if m == c.model else ""
         if "nemotron" in m.lower() or mark:
             print(m + mark)
     if c.model not in ids:
-        print(f"\nВНИМАНИЕ: модели {c.model} нет в списке — задайте NIGHTWATCH_MODEL", file=sys.stderr)
+        print(f"\nWARNING: {c.model} is not in the list — set NIGHTWATCH_MODEL", file=sys.stderr)
         return 1
     return 0
 
@@ -79,14 +79,14 @@ def main(argv=None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
     p = argparse.ArgumentParser(prog="nightwatch")
     sub = p.add_subparsers(dest="cmd", required=True)
-    r = sub.add_parser("run", help="расследовать алерт")
-    r.add_argument("--repo", required=True, help="путь к git-репозиторию учебного проекта")
-    r.add_argument("--alert", required=True, help="JSON: Alert или событие Sentry")
+    r = sub.add_parser("run", help="investigate an alert")
+    r.add_argument("--repo", required=True, help="path to the demo project git repository")
+    r.add_argument("--alert", required=True, help="JSON: Alert or a Sentry event")
     r.add_argument("--runner", choices=["local", "team"], default="local")
     r.add_argument("--verifier", choices=["reference", "team"], default="reference")
     r.set_defaults(fn=cmd_run)
-    sub.add_parser("models", help="проверить ключ и модели").set_defaults(fn=cmd_models)
-    s = sub.add_parser("show", help="показать инцидент из истории")
+    sub.add_parser("models", help="check the key and models").set_defaults(fn=cmd_models)
+    s = sub.add_parser("show", help="show an incident from history")
     s.add_argument("id")
     s.set_defaults(fn=cmd_show)
     args = p.parse_args(argv)

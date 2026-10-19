@@ -1,17 +1,17 @@
-"""Преобразование события Sentry в Alert. Используется вебхуком (Тимур) и сценариями (Даник)."""
+"""Sentry event → Alert. Used by the webhook (Timur) and scenarios (Danik)."""
 from __future__ import annotations
 
 from .schemas import Alert, Frame
 
 
 def _event(payload: dict) -> dict:
-    # Вебхук issue alert: {"data": {"event": {...}}}; событие из API — сразу объект события.
+    # Issue-alert webhook: {"data": {"event": {...}}}; an API event is the event object itself.
     data = payload.get("data", payload)
     return data.get("event", data)
 
 
 def _repo_path(path: str, code_root: str | None, markers: tuple[str, ...]) -> str:
-    """Абсолютный путь в контейнере → путь в репозитории."""
+    """Absolute path inside the container → path in the repository."""
     if code_root and path.startswith(code_root):
         return path[len(code_root):].lstrip("/")
     for m in markers:
@@ -22,7 +22,7 @@ def _repo_path(path: str, code_root: str | None, markers: tuple[str, ...]) -> st
 
 def alert_from_sentry(payload: dict, code_root: str | None = None,
                       markers: tuple[str, ...] = ("app/", "src/")) -> Alert:
-    """code_root — корень кода в контейнере (например /srv/app/), по умолчанию из NIGHTWATCH_CODE_ROOT."""
+    """code_root — code root inside the container (e.g. /srv/app/), defaults to NIGHTWATCH_CODE_ROOT."""
     import os
     code_root = code_root or os.getenv("NIGHTWATCH_CODE_ROOT")
     ev = _event(payload)
@@ -39,7 +39,7 @@ def alert_from_sentry(payload: dict, code_root: str | None = None,
     tags = dict(ev.get("tags") or []) if isinstance(ev.get("tags"), list) else (ev.get("tags") or {})
     commit = ev.get("release") or tags.get("commit") or tags.get("release")
     if not commit:
-        raise ValueError("в событии Sentry нет release/commit — укажите release=<git sha> в Sentry SDK")
+        raise ValueError("Sentry event has no release/commit — set release=<git sha> in the Sentry SDK")
     return Alert(
         source="sentry",
         title=ev.get("title") or f"{exc.get('type', 'Error')}: {exc.get('value', '')}"[:200],

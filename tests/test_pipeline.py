@@ -1,4 +1,4 @@
-"""Сквозные тесты конвейера: настоящий pytest на учебном репозитории, LLM по сценарию."""
+"""End-to-end pipeline tests: real pytest on a demo repository, scripted LLM."""
 from __future__ import annotations
 
 from conftest import FIX_DIFF, REPRO_TEST, ScriptedLLM
@@ -39,10 +39,10 @@ def test_happy_path_verified(demo_repo, alert, tmp_path):
     assert inc.repro_verdict.ok and inc.repro_verdict.checks["passes_on_good"]
     assert inc.final_patch.diff == FIX_DIFF
     assert len(inc.attempts) == 1 and inc.attempts[0].verdict.checks["suite_green"]
-    # контекст: стектрейс, запрос, diff, файл
+    # context: stack trace, request, diff, file
     kinds = [e.kind for e in inc.evidence]
     assert kinds[:2] == ["stacktrace", "request"] and "diff" in kinds and "file" in kinds
-    # история сохранена
+    # history saved
     assert pipe.history.load(inc.id).state == IncidentState.verified
 
 
@@ -52,14 +52,14 @@ def test_repro_that_does_not_fail_goes_to_report(demo_repo, alert, tmp_path):
     pipe, llm = make(demo_repo, tmp_path, {"investigate": [passing, passing], "report": [REPORT]})
     inc = pipe.run(alert)
     assert inc.state == IncidentState.reported
-    assert not inc.attempts  # патч даже не запрашивался
+    assert not inc.attempts  # no patch was even requested
     assert [c[0] for c in llm.calls] == ["investigate", "investigate", "report"]
-    assert "не упал" in llm.calls[1][1]  # причина отказа передана модели во второй попытке
+    assert "did not fail" in llm.calls[1][1]  # the rejection reason reaches the second attempt
 
 
 def test_wrong_exception_is_not_a_reproduction(demo_repo, alert, tmp_path):
     wrong = {**INVESTIGATION, "repro_test": {**INVESTIGATION["repro_test"], "code":
-             "from app.calc import average\n\ndef test_x():\n    average(None)\n"}}  # TypeError, не ZeroDivision
+             "from app.calc import average\n\ndef test_x():\n    average(None)\n"}}  # TypeError, not ZeroDivisionError
     pipe, _ = make(demo_repo, tmp_path, {"investigate": [wrong, wrong], "report": [REPORT]})
     inc = pipe.run(alert)
     assert inc.state == IncidentState.reported
@@ -73,8 +73,8 @@ def test_patch_touching_tests_is_rejected_then_fixed(demo_repo, alert, tmp_path)
     inc = pipe.run(alert)
     assert inc.state == IncidentState.verified
     assert inc.attempts[0].verdict.checks == {"diff_guard": False}
-    assert inc.attempts[0].run is None  # до runner не дошло
-    assert "меняет тесты" in llm.calls[-1][1]  # причина передана в следующую попытку
+    assert inc.attempts[0].run is None  # never reached the runner
+    assert "modifies tests" in llm.calls[-1][1]  # the reason reaches the next attempt
 
 
 def test_patch_that_does_not_fix_is_retried_then_reported(demo_repo, alert, tmp_path):
@@ -94,19 +94,19 @@ def test_memory_finds_previous_verified_incident(demo_repo, alert, tmp_path):
     second = pipe.run(alert.model_copy(update={"id": "alert-2"}))
     assert second.similar_incidents == [first.id]
     memory = [e for e in second.evidence if e.kind == "memory"]
-    assert memory and "Проверенный фикс" in memory[0].content
+    assert memory and "Verified fix" in memory[0].content
 
 
 def test_budget_exceeded_ends_in_report(demo_repo, alert, tmp_path):
     pipe, _ = make(demo_repo, tmp_path, {"investigate": [BudgetExceeded("limit")], "report": [BudgetExceeded("x")]})
     inc = pipe.run(alert)
     assert inc.state == IncidentState.reported
-    assert "бюджет" in inc.events[-1].message
+    assert "budget" in inc.events[-1].message
 
 
 def test_check_diff():
     assert check_diff(FIX_DIFF, 200) is None
-    assert "тесты" in check_diff("--- a/tests/x.py\n+++ b/tests/x.py\n@@ -1 +1 @@\n-a\n+b\n", 200)
+    assert "tests" in check_diff("--- a/tests/x.py\n+++ b/tests/x.py\n@@ -1 +1 @@\n-a\n+b\n", 200)
     assert check_diff("nonsense", 200)
     big = "--- a/app/x.py\n+++ b/app/x.py\n@@ -1 +1 @@\n" + "+a\n" * 300
-    assert "слишком большой" in check_diff(big, 200)
+    assert "too large" in check_diff(big, 200)

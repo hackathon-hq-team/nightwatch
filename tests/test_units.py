@@ -18,7 +18,7 @@ def test_extract_json_plain():
 
 
 class FakeOpenAI:
-    """Минимальная подмена openai.OpenAI для проверки повторов и учёта стоимости."""
+    """Minimal stand-in for openai.OpenAI to test retries and cost accounting."""
 
     def __init__(self, replies):
         self.replies = list(replies)
@@ -46,11 +46,11 @@ def test_complete_json_retries_on_invalid_schema_and_counts_cost(tmp_path):
     out = c.complete_json("patch", "sys", "user", PatchProposal, usage)
     assert out.diff == "d"
     assert [x.step for x in usage.calls] == ["patch", "patch:retry"]
-    # 1M входных × $0.30 + 0.1M выходных × $0.90 = $0.39 за вызов
+    # 1M input × $0.30 + 0.1M output × $0.90 = $0.39 per call
     assert usage.cost_usd == pytest.approx(0.78)
     assert c.daily.spent_today() == pytest.approx(0.78)
     second_messages = c._client.sent[1]["messages"]
-    assert "не прошёл проверку схемы" in second_messages[-1]["content"]
+    assert "failed schema validation" in second_messages[-1]["content"]
 
 
 def test_complete_json_gives_up_after_two_bad_answers(tmp_path):
@@ -80,7 +80,7 @@ def test_alert_from_sentry_webhook():
     a = alert_from_sentry(payload)
     assert a.commit == "abc123" and a.previous_good_commit == "def456"
     assert a.signature().file == "app/calc.py" and a.signature().function == "average"
-    assert "headers" not in a.request  # заголовки (cookie, токены) в модель не уходят
+    assert "headers" not in a.request  # headers (cookies, tokens) never reach the model
 
 
 def test_alert_from_sentry_requires_release():

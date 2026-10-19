@@ -1,8 +1,8 @@
-"""Интерфейсы, которые реализуют Тимур (runner) и Даник (verifier).
+"""Interfaces implemented by Timur (runner) and Danik (verifier).
 
-pipeline.py зависит только от этих протоколов, поэтому каждый может работать
-независимо: до готовности настоящих модулей используются реализации из
-nightwatch/dev/ (локальный запуск pytest без Docker и эталонный verifier).
+pipeline.py depends only on these protocols, so everyone can work independently:
+until the real modules land, the implementations in nightwatch/dev/ are used
+(local pytest without Docker and a reference verifier).
 """
 from __future__ import annotations
 
@@ -19,17 +19,17 @@ class Runner(Protocol):
         patch: str | None = None,
         select: list[str] | None = None,
     ) -> RunResult:
-        """Поднять копию проекта на commit, положить test_files, применить patch
-        (unified diff), запустить pytest. select — список путей/nodeid; None — весь набор.
+        """Create a copy of the project at `commit`, write `test_files`, apply `patch`
+        (unified diff), run pytest. `select` is a list of paths/nodeids; None — the full suite.
 
-        Требования: без сети, без ключей, таймаут. Не бросать исключения из-за
-        падения тестов — это нормальный RunResult(status="failed").
-        Неприменимый патч → status="error", patch_applied=False.
+        Requirements: no network, no keys, a timeout. Do not raise because tests fail —
+        that is a normal RunResult(status="failed").
+        A patch that does not apply → status="error", patch_applied=False.
         """
         ...
 
     def tests_hash(self, commit: str, test_files: dict[str, str]) -> str:
-        """sha256 всех файлов тестов на commit плюс test_files — эталон до патча."""
+        """sha256 of all test files at `commit` plus `test_files` — the baseline before the patch."""
         ...
 
 
@@ -41,8 +41,8 @@ class Verifier(Protocol):
         broken: RunResult,
         good: RunResult | None,
     ) -> Verdict:
-        """Сбой воспроизведён, только если тест падает на broken с той же сигнатурой,
-        что и алерт, и (если good есть) проходит на предыдущей исправной версии."""
+        """Reproduced only if the test fails on `broken` with the same signature as the alert
+        and (when `good` is given) passes on the previous good version."""
         ...
 
     def check_patch(
@@ -52,6 +52,6 @@ class Verifier(Protocol):
         after: RunResult,
         tests_hash_before: str,
     ) -> Verdict:
-        """Патч принят, только если патч применился, весь набор зелёный (включая тест
-        воспроизведения) и хэш файлов тестов не изменился."""
+        """Accepted only if the patch applied, the whole suite is green (including the
+        reproduction test) and the test-file hash did not change."""
         ...

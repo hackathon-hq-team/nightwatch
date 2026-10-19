@@ -1,8 +1,8 @@
-"""Временный runner для разработки: pytest локально, без Docker.
+"""Temporary runner for development: pytest locally, without Docker.
 
-НЕ изолирует сеть и файлы — только для отладки промптов на учебном проекте.
-Настоящий runner.py (Тимур) делает то же самое во временном контейнере
-с --network none. Интерфейс одинаковый (contracts.Runner).
+Does NOT isolate network or files — only for debugging prompts on the demo project.
+The real runner.py (Timur) does the same in a throwaway container with
+--network none. Same interface (contracts.Runner).
 """
 from __future__ import annotations
 
@@ -18,11 +18,11 @@ from pathlib import Path
 
 from ..schemas import RunResult, TestFailure
 
-PLUGIN_ROOT = str(Path(__file__).resolve().parents[2])  # чтобы pytest нашёл nightwatch.pytest_plugin
+PLUGIN_ROOT = str(Path(__file__).resolve().parents[2])  # so pytest can find nightwatch.pytest_plugin
 
 
 def apply_patch(workdir: Path, diff: str) -> tuple[bool, str]:
-    """git apply с пересчётом номеров строк; запасной вариант — patch с допуском."""
+    """git apply with line recount; fallback — patch with fuzz."""
     patch_file = workdir / ".nightwatch.patch"
     patch_file.write_text(diff if diff.endswith("\n") else diff + "\n")
     tries = [
@@ -62,7 +62,7 @@ class LocalRunner:
         tmp = Path(tempfile.mkdtemp(prefix="nightwatch-"))
         archive = subprocess.run(["git", "-C", str(self.repo), "archive", commit], capture_output=True, check=True)
         subprocess.run(["tar", "-x", "-C", str(tmp)], input=archive.stdout, check=True)
-        subprocess.run(["git", "init", "-q"], cwd=tmp, check=True)  # для git apply
+        subprocess.run(["git", "init", "-q"], cwd=tmp, check=True)  # needed for git apply
         return tmp
 
     @staticmethod
@@ -94,12 +94,12 @@ class LocalRunner:
                 applied, err = apply_patch(root, patch)
                 if not applied:
                     return RunResult(commit=commit, status="error", exit_code=-1, patch_applied=False,
-                                     output_tail=f"Патч не применился:\n{err}"[-3000:],
+                                     output_tail=f"Patch did not apply:\n{err}"[-3000:],
                                      duration_s=round(time.time() - started, 2))
             report = root / ".nightwatch-report.json"
             env = {**os.environ, "NIGHTWATCH_REPORT": str(report),
                    "PYTHONPATH": os.pathsep.join([str(root), PLUGIN_ROOT]), "PYTHONDONTWRITEBYTECODE": "1"}
-            env.pop("NEBIUS_API_KEY", None)  # тесты не должны видеть ключи
+            env.pop("NEBIUS_API_KEY", None)  # tests must not see keys
             cmd = [self.python, "-m", "pytest", "-q", "-p", "nightwatch.pytest_plugin", "-p", "no:cacheprovider",
                    *(select or [])]
             try:
@@ -113,7 +113,7 @@ class LocalRunner:
                 status = "passed"
             elif res.returncode == 1:
                 status = "failed"
-            else:  # 2–5: ошибка сбора, нет тестов и т.п.
+            else:  # 2–5: collection error, no tests, etc.
                 status = "error"
             return RunResult(commit=commit, status=status, exit_code=res.returncode, passed=data["passed"],
                              failures=failures, tests_hash=hash_tests(root), patch_applied=applied,

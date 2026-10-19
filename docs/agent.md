@@ -1,55 +1,55 @@
-# Агент Nightwatch (часть Никиты)
+# Nightwatch agent (Nikita's part)
 
-Модель только предлагает: гипотезу, тест воспроизведения и патч. Запускает их `runner`, решает `verifier`.
+The model only proposes: a hypothesis, a reproduction test and a patch. The `runner` executes them, the `verifier` decides.
 
 ```
-алерт → context.py → Nemotron Super: гипотезы + тест → runner (сломанная и исправная версия)
-      → verifier: воспроизведено? ── нет → отчёт
-                         └─ да → Nemotron Super: патч → runner (весь набор) → verifier → Draft PR
-                                         ↑ до 3 попыток, причина отказа уходит в следующую
+alert → context.py → Nemotron Super: hypotheses + test → runner (broken and good version)
+      → verifier: reproduced? ── no → diagnostic report
+                       └─ yes → Nemotron Super: patch → runner (full suite) → verifier → Draft PR
+                                      ↑ up to 3 attempts, the rejection reason feeds the next one
 ```
 
-## Модули
+## Modules
 
-| Файл | Что делает |
+| File | What it does |
 | --- | --- |
-| `nightwatch/schemas.py` | Общие модели: `Alert`, `Evidence`, `Investigation`, `PatchProposal`, `RunResult`, `Verdict`, `Incident` |
-| `nightwatch/contracts.py` | Интерфейсы `Runner` (Тимур) и `Verifier` (Даник) |
-| `nightwatch/model_client.py` | Nemotron через Token Factory: JSON по схеме, повтор при ошибке, учёт токенов, бюджеты |
-| `nightwatch/context.py` | Доказательства с id `E1…`: стектрейс, запрос, логи, diff, файлы, похожие случаи |
-| `nightwatch/history.py` | История `history/inc-*.json` и поиск похожих инцидентов (память) |
-| `nightwatch/prompts.py` | Промпты расследования, патча и отчёта |
-| `nightwatch/pipeline.py` | Оркестратор и состояния инцидента |
-| `nightwatch/sentry.py` | Событие Sentry → `Alert` |
-| `nightwatch/pytest_plugin.py` | Пишет результат pytest с сигнатурой исключения в JSON |
-| `nightwatch/dev/` | Временные `LocalRunner` (pytest без Docker) и `ReferenceVerifier` — до готовности модулей Тимура и Даника |
+| `nightwatch/schemas.py` | Shared models: `Alert`, `Evidence`, `Investigation`, `PatchProposal`, `RunResult`, `Verdict`, `Incident` |
+| `nightwatch/contracts.py` | `Runner` (Timur) and `Verifier` (Danik) interfaces |
+| `nightwatch/model_client.py` | Nemotron via Token Factory: schema-validated JSON, retry, token accounting, budgets |
+| `nightwatch/context.py` | Evidence with ids `E1…`: stack trace, request, logs, diff, files, similar incidents |
+| `nightwatch/history.py` | `history/inc-*.json` and similar-incident search (memory) |
+| `nightwatch/prompts.py` | Investigation, patch and report prompts |
+| `nightwatch/pipeline.py` | Orchestrator and incident states |
+| `nightwatch/sentry.py` | Sentry event → `Alert` |
+| `nightwatch/pytest_plugin.py` | Writes pytest results with the exception signature to JSON |
+| `nightwatch/dev/` | Temporary `LocalRunner` (pytest without Docker) and `ReferenceVerifier` until Timur's and Danik's modules land |
 
-## Контракт для Тимура (runner)
+## Contract for Timur (runner)
 
-Реализовать `contracts.Runner`: `run(commit, test_files, patch, select) -> RunResult` и `tests_hash(...)`.
+Implement `contracts.Runner`: `run(commit, test_files, patch, select) -> RunResult` and `tests_hash(...)`.
 
-- копия проекта на `commit`, запись `test_files`, затем патч: `git apply --recount`, запасной вариант `patch -p1 --fuzz=3`;
-- pytest с плагином: `NIGHTWATCH_REPORT=/tmp/r.json pytest -p nightwatch.pytest_plugin` — плагин отдаёт `passed` и `failures` с типом исключения, сообщением, файлом и функцией;
-- `--network none`, без ключей в окружении, таймаут;
-- неприменимый патч → `status="error", patch_applied=False`; `tests_hash` — sha256 всех `tests/**/*.py` после патча.
+- copy of the project at `commit`, write `test_files`, then the patch: `git apply --recount`, fallback `patch -p1 --fuzz=3`;
+- pytest with the plugin: `NIGHTWATCH_REPORT=/tmp/r.json pytest -p nightwatch.pytest_plugin` — the plugin reports `passed` and `failures` with exception type, message, file and function;
+- `--network none`, no keys in the environment, a timeout;
+- a patch that does not apply → `status="error", patch_applied=False`; `tests_hash` is sha256 of all `tests/**/*.py` after the patch.
 
-Эталон поведения — `nightwatch/dev/local_runner.py`.
+Reference behaviour: `nightwatch/dev/local_runner.py`.
 
-## Контракт для Даника (verifier)
+## Contract for Danik (verifier)
 
-Реализовать `contracts.Verifier`: `check_reproduction(...)` и `check_patch(...)` → `Verdict(ok, reason, checks)`. Эталон — `nightwatch/dev/reference_verifier.py`; тесты в `tests/test_pipeline.py` показывают, какие случаи он обязан ловить.
+Implement `contracts.Verifier`: `check_reproduction(...)` and `check_patch(...)` → `Verdict(ok, reason, checks)`. Reference: `nightwatch/dev/reference_verifier.py`; the tests in `tests/test_pipeline.py` show which cases it must catch.
 
-## Запуск
+## Running
 
 ```bash
 pip install -e .
-cp .env.example .env            # вписать NEBIUS_API_KEY
-python -m nightwatch.cli models # точный ID Super в Token Factory
+cp .env.example .env            # set NEBIUS_API_KEY
+python -m nightwatch.cli models # exact Super model id in Token Factory
 python -m nightwatch.cli run --repo ../demo-app --alert scenarios/bug01.json
-pytest -q                       # тесты без сети и ключа
+pytest -q                       # tests, no network or key needed
 ```
 
-## Открытые вопросы
+## Open questions
 
-- Точный ID Nemotron 3 Super и поддержка `response_format` в Token Factory (клиент сам откатывается на обычный режим).
-- Sentry SDK в учебном проекте должен ставить `release=<git sha>` и тег `previous_release` — иначе `sentry.py` не знает версию.
+- Exact Nemotron 3 Super id and `response_format` support in Token Factory (the client falls back to plain mode on its own).
+- The Sentry SDK in the demo project must set `release=<git sha>` and a `previous_release` tag, otherwise `sentry.py` cannot tell the version.

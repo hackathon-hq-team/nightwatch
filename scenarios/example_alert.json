@@ -2,8 +2,17 @@
   "title": "ZeroDivisionError: division by zero in GET /stats",
   "exception_type": "ZeroDivisionError",
   "message": "division by zero",
-  "stacktrace": [{"file": "app/calc.py", "function": "average", "line": 3}],
-  "request": {"method": "GET", "url": "/stats?ids="},
-  "commit": "<sha сломанной версии>",
-  "previous_good_commit": "<sha предыдущей версии>"
+  "stacktrace": [
+    {
+      "file": "app/calc.py",
+      "function": "average",
+      "line": 3
+    }
+  ],
+  "request": {
+    "method": "GET",
+    "url": "/stats?ids="
+  },
+  "commit": "<sha of the broken version>",
+  "previous_good_commit": "<sha of the previous good version>"
 }

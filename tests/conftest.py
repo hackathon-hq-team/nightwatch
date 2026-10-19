@@ -1,4 +1,4 @@
-"""Фикстуры: маленький git-репозиторий с багом и LLM со сценарием ответов."""
+"""Fixtures: a tiny git repository with a bug and a scripted LLM."""
 from __future__ import annotations
 
 import subprocess
@@ -10,7 +10,7 @@ from nightwatch.schemas import Alert, Frame, Usage
 
 GOOD = '''\
 def average(items):
-    """Среднее значение; для пустого списка — 0."""
+    """Mean value; 0 for an empty list."""
     if not items:
         return 0
     return sum(items) / len(items)
@@ -22,7 +22,7 @@ def total(items):
 
 BROKEN = '''\
 def average(items):
-    """Среднее значение; для пустого списка — 0."""
+    """Mean value; 0 for an empty list."""
     return sum(items) / len(items)
 
 
@@ -55,7 +55,7 @@ FIX_DIFF = '''\
 +++ b/app/calc.py
 @@ -1,5 +1,7 @@
  def average(items):
-     """Среднее значение; для пустого списка — 0."""
+     """Mean value; 0 for an empty list."""
 +    if not items:
 +        return 0
      return sum(items) / len(items)
@@ -102,7 +102,7 @@ def alert(demo_repo) -> Alert:
 
 
 class ScriptedLLM:
-    """Отдаёт заранее заданные ответы по шагам: {"investigate": [..], "patch": [..], "report": [..]}."""
+    """Returns scripted replies per step: {"investigate": [..], "patch": [..], "report": [..]}."""
 
     def __init__(self, script: dict[str, list]):
         self.script = {k: list(v) for k, v in script.items()}
@@ -112,7 +112,7 @@ class ScriptedLLM:
         self.calls.append((step, user))
         queue = self.script.get(step) or []
         if not queue:
-            raise AssertionError(f"нет ответа для шага {step}")
+            raise AssertionError(f"no scripted reply for step {step}")
         item = queue.pop(0)
         if isinstance(item, Exception):
             raise item

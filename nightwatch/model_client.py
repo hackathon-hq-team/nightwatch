@@ -1,11 +1,11 @@
-"""Клиент Nemotron через Nebius Token Factory (OpenAI-совместимый API).
+"""Nemotron client for Nebius Token Factory (OpenAI-compatible API).
 
-Что делает сверх обычного вызова:
-- просит JSON и валидирует его по Pydantic-схеме; при ошибке — один повтор
-  с текстом ошибки валидации;
-- вырезает <think>…</think> и обёртки ```json;
-- считает токены и стоимость каждого вызова (Incident.usage);
-- соблюдает бюджет инцидента и дневной бюджет (BudgetExceeded).
+On top of a plain chat call it:
+- asks for JSON and validates it against a Pydantic schema; on failure it retries once
+  with the validation error;
+- strips <think>…</think> and ```json fences;
+- records tokens and cost of every call (Incident.usage);
+- enforces the per-incident and daily budgets (BudgetExceeded).
 """
 from __future__ import annotations
 
@@ -33,7 +33,7 @@ class ModelError(RuntimeError):
 
 
 class LLM(Protocol):
-    """То, что нужно pipeline. Тесты подставляют ScriptedLLM."""
+    """What the pipeline needs. Tests plug in a ScriptedLLM."""
 
     def complete_json(self, step: str, system: str, user: str, schema: type[T], usage: Usage,
                       max_tokens: int = 4096) -> T: ...
@@ -46,14 +46,14 @@ _FENCE = re.compile(r"```(?:json)?\s*(.*?)```", re.S)
 
 
 def extract_json(text: str) -> dict:
-    """Достаёт первый JSON-объект из ответа модели."""
+    """Return the first JSON object in a model reply."""
     text = _THINK.sub("", text or "").strip()
     fenced = _FENCE.search(text)
     if fenced:
         text = fenced.group(1).strip()
     start = text.find("{")
     if start == -1:
-        raise ValueError("в ответе нет JSON-объекта")
+        raise ValueError("no JSON object in the reply")
     depth, in_str, esc = 0, False, False
     for i in range(start, len(text)):
         ch = text[i]
@@ -72,7 +72,7 @@ def extract_json(text: str) -> dict:
             depth -= 1
             if depth == 0:
                 return json.loads(text[start : i + 1])
-    raise ValueError("JSON-объект не закрыт")
+    raise ValueError("JSON object is not closed")
 
 
 def schema_hint(schema: type[BaseModel]) -> str:
@@ -83,7 +83,7 @@ def schema_hint(schema: type[BaseModel]) -> str:
 
 
 class DailyBudget:
-    """Сколько потрачено сегодня. Хранится в history/_spend.json, общий для всех процессов."""
+    """Spend for today. Stored in history/_spend.json, shared by all processes."""
 
     def __init__(self, history_dir: Path, limit_usd: float):
         self.path = Path(history_dir) / "_spend.json"
@@ -107,7 +107,7 @@ class DailyBudget:
 
     def check(self) -> None:
         if self.spent_today() >= self.limit:
-            raise BudgetExceeded(f"дневной бюджет ${self.limit:.2f} исчерпан")
+            raise BudgetExceeded(f"daily budget ${self.limit:.2f} exhausted")
 
 
 # --------------------------------------------------------------------------- client
@@ -119,13 +119,13 @@ class ModelClient:
         self.model = model or self.s.model
         if client is None:
             if not self.s.api_key:
-                raise ModelError("NEBIUS_API_KEY не задан (см. .env.example)")
+                raise ModelError("NEBIUS_API_KEY is not set (see .env.example)")
             from openai import OpenAI
 
             client = OpenAI(base_url=self.s.base_url, api_key=self.s.api_key, timeout=self.s.request_timeout_s)
         self._client = client
         self.daily = DailyBudget(self.s.history_dir, self.s.daily_budget_usd)
-        self._json_mode = True  # выключается, если эндпоинт не поддерживает response_format
+        self._json_mode = True  # switched off if the endpoint does not support response_format
 
     # -- low level
 
@@ -134,7 +134,7 @@ class ModelClient:
         if self._json_mode:
             try:
                 return self._client.chat.completions.create(response_format={"type": "json_object"}, **kwargs)
-            except Exception as e:  # эндпоинт не знает response_format — работаем без него
+            except Exception as e:  # endpoint does not know response_format — continue without it
                 if "response_format" not in str(e) and "json" not in str(e).lower():
                     raise
                 self._json_mode = False
@@ -152,7 +152,7 @@ class ModelClient:
 
     def _check_budget(self, usage: Usage) -> None:
         if usage.cost_usd >= self.s.incident_budget_usd:
-            raise BudgetExceeded(f"бюджет инцидента ${self.s.incident_budget_usd:.2f} исчерпан")
+            raise BudgetExceeded(f"incident budget ${self.s.incident_budget_usd:.2f} exhausted")
         self.daily.check()
 
     # -- public
@@ -160,8 +160,8 @@ class ModelClient:
     def complete_json(self, step: str, system: str, user: str, schema: type[T], usage: Usage,
                       max_tokens: int = 4096) -> T:
         system = (
-            f"{system}\n\nОтвечай ТОЛЬКО одним JSON-объектом, без пояснений вокруг. "
-            f"JSON Schema ответа:\n{schema_hint(schema)}"
+            f"{system}\n\nReply with ONLY one JSON object, no text around it. "
+            f"JSON Schema of the reply:\n{schema_hint(schema)}"
         )
         messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
         last_error = ""
@@ -177,9 +177,10 @@ class ModelClient:
                 last_error = str(e)[:1500]
                 messages += [
                     {"role": "assistant", "content": text[:4000]},
-                    {"role": "user", "content": f"Ответ не прошёл проверку схемы:\n{last_error}\nВерни исправленный JSON."},
+                    {"role": "user", "content": f"The reply failed schema validation:\n{last_error}\n"
+                                                "Return corrected JSON."},
                 ]
-        raise ModelError(f"{step}: модель не вернула корректный JSON: {last_error}")
+        raise ModelError(f"{step}: model did not return valid JSON: {last_error}")
 
     def list_models(self) -> list[str]:
         return [m.id for m in self._client.models.list().data]

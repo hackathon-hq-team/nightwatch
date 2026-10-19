@@ -1,14 +1,14 @@
-"""Оркестратор инцидента.
+"""Incident orchestrator.
 
 received → investigating → reproducing → patching → verified
-                                   └──────────────┴──→ reported (отчёт вместо патча)
+                                   └──────────────┴──→ reported (report instead of a patch)
 
-Правила (проверяет verifier, pipeline только соблюдает порядок):
-1. Модель только предлагает; запускает runner, решает verifier.
-2. Нет воспроизведения — нет патча.
-3. Тест воспроизведения фиксируется до патча; патч не может трогать tests/.
-4. Не больше max_patch_attempts попыток и бюджет на инцидент.
-Каждый шаг сохраняется в историю — UI видит прогресс в реальном времени.
+Rules (the verifier checks them, the pipeline only enforces the order):
+1. The model only proposes; the runner executes, the verifier decides.
+2. No reproduction — no patch.
+3. The reproduction test is fixed before the patch; a patch may not touch tests/.
+4. At most max_patch_attempts attempts and a per-incident budget.
+Every step is saved to history so the UI shows progress live.
 """
 from __future__ import annotations
 
@@ -46,18 +46,18 @@ def diff_files(diff: str) -> set[str]:
 
 
 def check_diff(diff: str, max_lines: int) -> str | None:
-    """Быстрый отказ до запуска runner. Возвращает причину или None."""
+    """Fast rejection before the runner. Returns a reason or None."""
     if not diff.strip() or "@@" not in diff:
-        return "пустой или некорректный diff"
+        return "empty or malformed diff"
     files = diff_files(diff)
     if not files:
-        return "в diff не найдено ни одного файла"
+        return "no files found in the diff"
     touched_tests = [f for f in files if f.startswith("tests/") or "/tests/" in f or f.split("/")[-1].startswith("test_")]
     if touched_tests:
-        return f"патч меняет тесты: {', '.join(sorted(touched_tests))}"
+        return f"patch modifies tests: {', '.join(sorted(touched_tests))}"
     changed = sum(1 for ln in diff.splitlines() if ln[:1] in "+-" and not ln.startswith(("+++", "---")))
     if changed > max_lines:
-        return f"diff слишком большой: {changed} строк > {max_lines}"
+        return f"diff too large: {changed} lines > {max_lines}"
     return None
 
 
@@ -84,29 +84,31 @@ class Pipeline:
 
     def run(self, alert: Alert) -> Incident:
         inc = Incident(alert=alert)
-        inc.move(IncidentState.received, f"Алерт: {alert.exception_type}: {alert.message[:120]}")
+        inc.move(IncidentState.received, f"Alert: {alert.exception_type}: {alert.message[:120]}")
         self._save(inc)
         try:
             self._investigate_and_reproduce(inc)
             if inc.state == IncidentState.reproducing:
                 self._patch(inc)
         except BudgetExceeded as e:
-            self._report(inc, f"Остановлено по бюджету: {e}")
-        except Exception as e:  # ошибка системы, а не результат расследования
+            self._report(inc, f"Stopped by budget: {e}")
+        except Exception as e:  # a Nightwatch failure, not an investigation outcome
             log.exception("pipeline failed")
             inc.error = f"{type(e).__name__}: {e}\n{traceback.format_exc()[-2000:]}"
-            inc.move(IncidentState.failed, f"Ошибка Nightwatch: {type(e).__name__}: {e}")
+            inc.move(IncidentState.failed, f"Nightwatch error: {type(e).__name__}: {e}")
         self._save(inc)
         return inc
 
     # ------------------------------------------------------------------ steps
 
+    def _note(self, inc: Incident, message: str) -> None:
+        inc.move(inc.state, message)
+
     def _investigate_and_reproduce(self, inc: Incident) -> None:
-        inc.move(IncidentState.investigating, "Сбор контекста")
+        inc.move(IncidentState.investigating, "Collecting context")
         inc.evidence, inc.similar_incidents = self.context.build(inc.alert, exclude_incident=inc.id)
         if inc.similar_incidents:
-            inc.events.append(inc.events[-1].model_copy(update={
-                "message": f"Найдены похожие случаи: {', '.join(inc.similar_incidents)}"}))
+            self._note(inc, f"Similar past incidents: {', '.join(inc.similar_incidents)}")
         self._save(inc)
 
         user = f"## Alert\n{inc.alert.title}\n\n## Evidence\n{render(inc.evidence)}"
@@ -114,12 +116,12 @@ class Pipeline:
             inv = self.llm.complete_json("investigate", prompts.INVESTIGATE_SYSTEM, user, Investigation, inc.usage)
             inc.investigation = inv
             if inv.repro_test is None:
-                self._report(inc, f"Модель считает сбой невоспроизводимым: {inv.not_reproducible_reason}")
+                self._report(inc, f"Model considers the failure not reproducible: {inv.not_reproducible_reason}")
                 return
             if not inv.repro_test.path.startswith(REPRO_DIR):
                 inv.repro_test.path = REPRO_DIR + inv.repro_test.path.split("/")[-1]
 
-            inc.move(IncidentState.reproducing, f"Попытка воспроизведения {n}: {inv.repro_test.path}")
+            inc.move(IncidentState.reproducing, f"Reproduction attempt {n}: {inv.repro_test.path}")
             self._save(inc)
             files = {inv.repro_test.path: inv.repro_test.code}
             inc.repro_broken = self.runner.run(inc.alert.commit, files, select=[inv.repro_test.path])
@@ -130,12 +132,13 @@ class Pipeline:
             inc.repro_verdict = verdict
             self._save(inc)
             if verdict.ok:
-                inc.events.append(inc.events[-1].model_copy(update={"message": f"Сбой воспроизведён: {verdict.reason}"}))
-                return  # остаёмся в reproducing → дальше патч
+                self._note(inc, f"Failure reproduced: {verdict.reason}")
+                return  # stay in `reproducing` → patching follows
             inc.rejected_hypotheses.append(inv.hypotheses[0].summary)
             user += "\n\n" + prompts.INVESTIGATE_RETRY.format(reason=verdict.reason, output=_tail(inc.repro_broken))
 
-        self._report(inc, f"Сбой не воспроизведён за {self.s.max_repro_attempts} попытки: {inc.repro_verdict.reason}")
+        self._report(inc, f"Failure not reproduced in {self.s.max_repro_attempts} attempts: "
+                          f"{inc.repro_verdict.reason}")
 
     def _patch(self, inc: Incident) -> None:
         inv = inc.investigation
@@ -146,7 +149,7 @@ class Pipeline:
         previous = ""
 
         for n in range(1, self.s.max_patch_attempts + 1):
-            inc.move(IncidentState.patching, f"Патч, попытка {n}")
+            inc.move(IncidentState.patching, f"Patch attempt {n}")
             self._save(inc)
             user = prompts.PATCH_USER.format(
                 evidence=render(inc.evidence), hypothesis=self._fmt_hyp(best), test_path=test.path,
@@ -166,15 +169,15 @@ class Pipeline:
 
             if attempt.verdict.ok:
                 inc.final_patch = proposal
-                inc.move(IncidentState.verified, f"Патч проверен: {attempt.verdict.reason}")
+                inc.move(IncidentState.verified, f"Patch verified: {attempt.verdict.reason}")
                 return
             previous = prompts.PATCH_PREVIOUS.format(n=n, reason=attempt.verdict.reason,
                                                      diff=proposal.diff[:4000], output=_tail(attempt.run))
 
-        self._report(inc, f"Патч не прошёл проверку за {self.s.max_patch_attempts} попытки")
+        self._report(inc, f"No patch passed verification in {self.s.max_patch_attempts} attempts")
 
     def _report(self, inc: Incident, why: str) -> None:
-        """Диагностический отчёт. Пробуем модель; если бюджет кончился — собираем из того, что есть."""
+        """Diagnostic report. Ask the model; if the budget is gone, build it from what we have."""
         report = None
         try:
             user = f"## Why automatic fix stopped\n{why}\n\n## Evidence\n{render(inc.evidence)}"
@@ -187,9 +190,9 @@ class Pipeline:
             log.warning("report via model failed: %s", e)
         if report is None:
             hyps = inc.investigation.hypotheses if inc.investigation else [
-                Hypothesis(summary="Недостаточно данных для гипотезы", confidence=0.0)]
+                Hypothesis(summary="Not enough data for a hypothesis", confidence=0.0)]
             report = DiagnosticReport(facts=[why], hypotheses=hyps,
-                                      next_steps=["Проверить логи и последние изменения вручную"])
+                                      next_steps=["Check logs and recent changes manually"])
         inc.report = report
         inc.move(IncidentState.reported, why)
 
@@ -209,7 +212,7 @@ class Pipeline:
             text = self.repo.show(inc.alert.commit, path)
             if text is not None:
                 parts.append(f"### {path}\n```python\n{text[:max_chars]}\n```")
-        return "\n\n".join(parts) or "(файлы недоступны — см. evidence)"
+        return "\n\n".join(parts) or "(files unavailable — see evidence)"
 
     def _save(self, inc: Incident) -> None:
         self.history.save(inc)

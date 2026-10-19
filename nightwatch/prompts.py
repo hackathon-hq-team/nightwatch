@@ -1,4 +1,4 @@
-"""Промпты для Nemotron. Язык — английский: модели надёжнее в нём, а UI переводит сам."""
+"""Prompts for Nemotron."""
 
 INVESTIGATE_SYSTEM = """\
 You are Nightwatch, an on-call engineer investigating a production error in a Python

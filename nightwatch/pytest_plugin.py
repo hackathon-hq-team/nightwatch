@@ -1,7 +1,7 @@
-"""pytest-плагин: пишет результаты тестов в JSON, включая сигнатуру исключения.
+"""pytest plugin: writes test results to JSON, including the exception signature.
 
-Подключение: pytest -p nightwatch.pytest_plugin, путь к отчёту — в NIGHTWATCH_REPORT.
-Тимур может использовать его же внутри контейнера (зависит только от pytest).
+Usage: pytest -p nightwatch.pytest_plugin, report path in NIGHTWATCH_REPORT.
+Timur can reuse it inside the container (depends on pytest only).
 """
 import json
 import os

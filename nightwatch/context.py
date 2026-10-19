@@ -1,15 +1,16 @@
-"""Сбор доказательств для модели.
+"""Evidence collection for the model.
 
-Каждый фрагмент получает id (E1, E2, …), чтобы гипотезы и патчи ссылались на
-конкретный лог или строку diff. Порядок — по важности; всё, что не помещается
-в бюджет токенов, обрезается или отбрасывается.
+Every fragment gets an id (E1, E2, …) so hypotheses and patches can cite a specific
+log or diff line. Order is by importance; whatever does not fit the token budget
+is truncated or dropped.
 
-Источники: стектрейс и данные запроса из алерта, логи, diff между последней
-исправной и сломанной версией, файлы из стектрейса (окно вокруг строки),
-похожие прошлые инциденты из истории.
+Sources: stack trace and request data from the alert, logs, the diff between the last
+good and the broken version, files from the stack trace (a window around the line),
+similar past incidents from history.
 """
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -20,7 +21,7 @@ SECRET_HINTS = (".env", "secret", "credential", "id_rsa", ".pem", ".key")
 
 
 class RepoView:
-    """Чтение репозитория учебного проекта через git, без checkout."""
+    """Read the demo project's repository through git, without a checkout."""
 
     def __init__(self, path: Path | str):
         self.path = Path(path)
@@ -74,7 +75,7 @@ class ContextBuilder:
         self.budget = token_budget
 
     def build(self, alert: Alert, exclude_incident: str | None = None) -> tuple[list[Evidence], list[str]]:
-        """Возвращает (доказательства, id похожих инцидентов)."""
+        """Return (evidence, ids of similar incidents)."""
         items: list[Evidence] = []
 
         def add(kind, source, content, truncated=False):
@@ -82,7 +83,7 @@ class ContextBuilder:
                 items.append(Evidence(id=f"E{len(items) + 1}", kind=kind, source=source,
                                       content=content.strip(), truncated=truncated))
 
-        # 1. Стектрейс
+        # 1. Stack trace
         if alert.stacktrace:
             st = "\n".join(f'  File "{f.file}", line {f.line}, in {f.function}' + ("" if f.in_app else "  [library]")
                            for f in alert.stacktrace)
@@ -90,17 +91,16 @@ class ContextBuilder:
         else:
             add("stacktrace", "alert", f"{alert.exception_type}: {alert.message}")
 
-        # 2. Данные запроса
+        # 2. Request data
         if alert.request:
-            import json
             add("request", "sentry", json.dumps(alert.request, ensure_ascii=False, indent=2)[:4000])
 
-        # 3. Логи
+        # 3. Logs
         if alert.logs:
             logs = alert.logs[-12000:]
             add("log", "alert", logs, truncated=len(alert.logs) > len(logs))
 
-        # 4. Изменения между исправной и сломанной версией
+        # 4. Changes between the good and the broken version
         base = alert.previous_good_commit or self.repo.parent(alert.commit)
         if base:
             try:
@@ -109,7 +109,7 @@ class ContextBuilder:
             except RuntimeError:
                 pass
 
-        # 5. Файлы из стектрейса (от места ошибки к началу), без дублей
+        # 5. Files from the stack trace (error site first), no duplicates
         seen = set()
         for f in reversed([f for f in alert.stacktrace if f.in_app]):
             if f.file in seen or _is_secret(f.file):
@@ -119,19 +119,19 @@ class ContextBuilder:
             if text is None:
                 continue
             body, cut = _window(text, f.line)
-            add("file", f"{f.file}@{alert.commit[:8]} (около строки {f.line}, функция {f.function})", body, cut)
+            add("file", f"{f.file}@{alert.commit[:8]} (around line {f.line}, function {f.function})", body, cut)
 
-        # 6. Память: похожие прошлые инциденты
+        # 6. Memory: similar past incidents
         similar_ids: list[str] = []
         if self.history:
             for score, inc in self.history.find_similar(alert, exclude=exclude_incident):
                 similar_ids.append(inc.id)
-                add("memory", f"{inc.id} (похожесть {score})", summarize_for_memory(inc))
+                add("memory", f"{inc.id} (similarity {score})", summarize_for_memory(inc))
 
         return self._fit(items), similar_ids
 
     def _fit(self, items: list[Evidence]) -> list[Evidence]:
-        """Обрезает контекст под бюджет: сначала урезаем diff и файлы, потом отбрасываем хвост."""
+        """Fit the budget: earlier items are kept whole, the one that overflows is truncated, the rest dropped."""
         total = sum(e.approx_tokens for e in items)
         if total <= self.budget:
             return items
@@ -145,13 +145,13 @@ class ContextBuilder:
                 chars = (left - 16) * 4
                 out.append(e.model_copy(update={"content": e.content[:chars], "truncated": True}))
                 used = self.budget
-            # остальное не помещается
+            # anything else does not fit
         return out
 
 
 def render(evidence: list[Evidence]) -> str:
     parts = []
     for e in evidence:
-        note = " (обрезано)" if e.truncated else ""
+        note = " (truncated)" if e.truncated else ""
         parts.append(f"### [{e.id}] {e.kind}: {e.source}{note}\n{e.content}")
     return "\n\n".join(parts)

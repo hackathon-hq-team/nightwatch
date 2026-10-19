@@ -1,18 +1,18 @@
-"""Настройки из переменных окружения (.env). Ключи никогда не пишем в код."""
+"""Settings from environment variables (.env). Never put keys in code."""
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
-try:  # python-dotenv необязателен
+try:  # python-dotenv is optional
     from dotenv import load_dotenv
 
     load_dotenv()
 except ImportError:  # pragma: no cover
     pass
 
-# Цены за 1M токенов (вход, выход), USD. Сверить в консоли Token Factory.
+# Price per 1M tokens (input, output), USD. Check against the Token Factory console.
 DEFAULT_PRICES: dict[str, tuple[float, float]] = {
     "nvidia/nemotron-3-super-120b-a12b": (0.30, 0.90),
     "nvidia/nemotron-3-nano-30b-a3b": (0.06, 0.24),
@@ -30,9 +30,9 @@ class Settings:
 
     history_dir: Path = field(default_factory=lambda: Path(os.getenv("NIGHTWATCH_HISTORY", "history")))
 
-    # Лимиты
+    # Limits
     context_token_budget: int = field(default_factory=lambda: int(os.getenv("NIGHTWATCH_CONTEXT_TOKENS", "150000")))
-    max_repro_attempts: int = 2  # сколько раз можно переписать тест воспроизведения
+    max_repro_attempts: int = 2  # how many times the reproduction test may be rewritten
     max_patch_attempts: int = 3
     incident_budget_usd: float = field(default_factory=lambda: float(os.getenv("NIGHTWATCH_INCIDENT_BUDGET", "0.50")))
     daily_budget_usd: float = field(default_factory=lambda: float(os.getenv("NIGHTWATCH_DAILY_BUDGET", "5.00")))

@@ -1,10 +1,10 @@
-"""Общие модели данных Nightwatch — контракт между модулями команды.
+"""Shared Nightwatch data models — the contract between team modules.
 
-Никита:  pipeline.py, context.py, model_client.py — создают и заполняют Incident.
-Тимур:   runner.py возвращает RunResult; UI читает Incident из истории.
-Даник:   verifier.py возвращает Verdict.
+Nikita:  pipeline.py, context.py, model_client.py — create and fill the Incident.
+Timur:   runner.py returns RunResult; the UI reads Incident from history.
+Danik:   verifier.py returns Verdict.
 
-Меняем только по согласованию: эти модели сохраняются в history/*.json и читаются UI.
+Change only by agreement: these models are stored in history/*.json and read by the UI.
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ def new_id(prefix: str = "inc") -> str:
 
 
 class Frame(BaseModel):
-    """Один кадр стектрейса. file — путь относительно корня репозитория."""
+    """One stack frame. `file` is relative to the repository root."""
 
     file: str
     function: str
@@ -37,11 +37,11 @@ class Frame(BaseModel):
 
 
 class ErrorSignature(BaseModel):
-    """По сигнатуре verifier сравнивает падение теста с исходным алертом."""
+    """The verifier compares a test failure with the original alert by this signature."""
 
-    exception_type: str  # например "ZeroDivisionError" или "KeyError"
-    message_contains: str = ""  # устойчивая часть сообщения, без id и дат
-    file: str | None = None  # файл, где брошено исключение (последний in_app кадр)
+    exception_type: str  # e.g. "ZeroDivisionError" or "KeyError"
+    message_contains: str = ""  # stable part of the message, no ids or dates
+    file: str | None = None  # file where the exception is raised (last in-app frame)
     function: str | None = None
 
 
@@ -51,13 +51,13 @@ class Alert(BaseModel):
     title: str
     exception_type: str
     message: str = ""
-    stacktrace: list[Frame] = Field(default_factory=list)  # от внешнего вызова к месту ошибки
-    request: dict | None = None  # метод, url, тело запроса из события Sentry
-    logs: str = ""  # фрагмент логов вокруг сбоя, если есть
-    commit: str  # версия, на которой случился сбой
-    previous_good_commit: str | None = None  # последняя версия без сбоя, если известна
+    stacktrace: list[Frame] = Field(default_factory=list)  # outermost call first, error site last
+    request: dict | None = None  # method, url, body from the Sentry event
+    logs: str = ""  # log excerpt around the failure, if any
+    commit: str  # version where the failure happened
+    previous_good_commit: str | None = None  # last known good version, if known
     received_at: datetime = Field(default_factory=utcnow)
-    raw: dict | None = None  # исходное событие для отладки
+    raw: dict | None = None  # original event, for debugging
 
     def signature(self) -> ErrorSignature:
         app_frames = [f for f in self.stacktrace if f.in_app] or self.stacktrace
@@ -77,11 +77,11 @@ EvidenceKind = Literal["stacktrace", "file", "diff", "log", "request", "memory",
 
 
 class Evidence(BaseModel):
-    """Фрагмент контекста. Модель обязана ссылаться на id (E1, E2…) в гипотезах."""
+    """A piece of context. The model must cite its id (E1, E2…) in hypotheses."""
 
     id: str
     kind: EvidenceKind
-    source: str  # путь к файлу, диапазон коммитов, "sentry" и т.п.
+    source: str  # file path, commit range, "sentry", etc.
     content: str
     truncated: bool = False
 
@@ -97,25 +97,25 @@ class Hypothesis(BaseModel):
     summary: str
     evidence_ids: list[str] = Field(default_factory=list)
     confidence: float = Field(ge=0.0, le=1.0)
-    would_refute: str = ""  # что опровергло бы гипотезу
+    would_refute: str = ""  # what observation would refute it
 
 
 class ReproTest(BaseModel):
-    """Тест воспроизведения. Пишется ДО патча и потом не меняется."""
+    """Reproduction test. Written BEFORE the patch and never changed afterwards."""
 
-    path: str  # только внутри tests/nightwatch/
+    path: str  # only under tests/nightwatch/
     code: str
     expected: ErrorSignature
 
 
 class Investigation(BaseModel):
     hypotheses: list[Hypothesis] = Field(min_length=1)
-    repro_test: ReproTest | None = None  # None — модель считает, что воспроизвести нельзя
+    repro_test: ReproTest | None = None  # None — the model thinks it cannot be reproduced
     not_reproducible_reason: str = ""
 
 
 class PatchProposal(BaseModel):
-    diff: str  # unified diff относительно корня репозитория
+    diff: str  # unified diff relative to the repository root
     explanation: str
     evidence_ids: list[str] = Field(default_factory=list)
 
@@ -130,31 +130,31 @@ class DiagnosticReport(BaseModel):
 
 
 class TestFailure(BaseModel):
-    __test__ = False  # чтобы pytest не принимал класс за тест
+    __test__ = False  # keep pytest from collecting this class
 
     nodeid: str
     exception_type: str
     message: str = ""
-    file: str | None = None  # последний кадр внутри репозитория (не тестов)
+    file: str | None = None  # last frame inside the repository (not tests)
     function: str | None = None
 
 
 class RunResult(BaseModel):
-    """Возвращает runner.py (Тимур)."""
+    """Returned by runner.py (Timur)."""
 
     commit: str
     status: Literal["passed", "failed", "error", "timeout"]
     exit_code: int
     passed: list[str] = Field(default_factory=list)
     failures: list[TestFailure] = Field(default_factory=list)
-    tests_hash: str = ""  # sha256 файлов тестов ПОСЛЕ применения патча
-    patch_applied: bool | None = None  # None — патча не было
-    output_tail: str = ""  # последние строки вывода pytest
+    tests_hash: str = ""  # sha256 of test files AFTER the patch is applied
+    patch_applied: bool | None = None  # None — no patch was given
+    output_tail: str = ""  # last lines of pytest output
     duration_s: float = 0.0
 
 
 class Verdict(BaseModel):
-    """Возвращает verifier.py (Даник)."""
+    """Returned by verifier.py (Danik)."""
 
     ok: bool
     reason: str
@@ -169,9 +169,9 @@ class IncidentState(str, Enum):
     investigating = "investigating"
     reproducing = "reproducing"
     patching = "patching"
-    verified = "verified"  # патч прошёл все проверки
-    reported = "reported"  # сбой не воспроизведён или патч не прошёл — отчёт
-    failed = "failed"  # ошибка самой системы (не путать с reported)
+    verified = "verified"  # the patch passed every check
+    reported = "reported"  # not reproduced or no passing patch — diagnostic report
+    failed = "failed"  # Nightwatch itself crashed (not the same as reported)
 
 
 class ModelCall(BaseModel):
@@ -217,7 +217,7 @@ class Incident(BaseModel):
     updated_at: datetime = Field(default_factory=utcnow)
 
     evidence: list[Evidence] = Field(default_factory=list)
-    similar_incidents: list[str] = Field(default_factory=list)  # id из истории
+    similar_incidents: list[str] = Field(default_factory=list)  # ids from history
     investigation: Investigation | None = None
     repro_broken: RunResult | None = None
     repro_good: RunResult | None = None

@@ -1,7 +1,7 @@
-"""История запусков: один JSON на инцидент в history/. Её читают UI (Тимур) и eval.py (Даник).
+"""Run history: one JSON per incident in history/. Read by the UI (Timur) and eval.py (Danik).
 
-Память: find_similar ищет прошлые закрытые инциденты с похожей сигнатурой ошибки.
-Найденное — только подсказка; новый фикс всё равно проходит воспроизведение и проверку.
+Memory: find_similar looks for past closed incidents with a similar error signature.
+A match is only a hint; a new fix still goes through reproduction and verification.
 """
 from __future__ import annotations
 
@@ -28,7 +28,7 @@ class HistoryStore:
     def save(self, incident: Incident) -> None:
         tmp = self.path(incident.id).with_suffix(".tmp")
         tmp.write_text(incident.model_dump_json(indent=2))
-        tmp.replace(self.path(incident.id))  # атомарно: UI не прочитает полфайла
+        tmp.replace(self.path(incident.id))  # atomic: the UI never reads half a file
 
     def load(self, incident_id: str) -> Incident:
         return Incident.model_validate_json(self.path(incident_id).read_text())
@@ -38,13 +38,13 @@ class HistoryStore:
         for p in sorted(self.root.glob("inc-*.json")):
             try:
                 out.append(Incident.model_validate_json(p.read_text()))
-            except Exception:  # битый файл не должен ронять UI
+            except Exception:  # a broken file must not crash the UI
                 continue
         return sorted(out, key=lambda i: i.created_at, reverse=True)
 
     def find_similar(self, alert: Alert, k: int = 3, exclude: str | None = None) -> list[tuple[float, Incident]]:
-        """Похожесть: тип исключения (0.4) + место ошибки (0.3) + слова сообщения (0.3).
-        Учитываем только закрытые инциденты — verified или reported."""
+        """Similarity: exception type (0.4) + error location (0.3) + message words (0.3).
+        Only closed incidents count — verified or reported."""
         sig = alert.signature()
         msg = _tokens(alert.message)
         scored = []
@@ -69,17 +69,17 @@ class HistoryStore:
 
 
 def summarize_for_memory(inc: Incident) -> str:
-    """Короткая выжимка прошлого инцидента для контекста модели."""
-    lines = [f"Инцидент {inc.id} ({inc.state.value}): {inc.alert.exception_type}: {inc.alert.message[:200]}"]
+    """Short summary of a past incident for the model's context."""
+    lines = [f"Incident {inc.id} ({inc.state.value}): {inc.alert.exception_type}: {inc.alert.message[:200]}"]
     sig = inc.alert.signature()
     if sig.file:
-        lines.append(f"Место: {sig.file}:{sig.function}")
+        lines.append(f"Location: {sig.file}:{sig.function}")
     if inc.investigation:
         best = max(inc.investigation.hypotheses, key=lambda h: h.confidence)
-        lines.append(f"Причина (гипотеза модели): {best.summary}")
+        lines.append(f"Cause (model hypothesis): {best.summary}")
     if inc.state == IncidentState.verified and inc.final_patch:
-        lines.append(f"Проверенный фикс: {inc.final_patch.explanation}")
+        lines.append(f"Verified fix: {inc.final_patch.explanation}")
         lines.append(inc.final_patch.diff[:1500])
     if inc.rejected_hypotheses:
-        lines.append("Не подтвердились: " + "; ".join(inc.rejected_hypotheses[:5]))
+        lines.append("Rejected: " + "; ".join(inc.rejected_hypotheses[:5]))
     return "\n".join(lines)
