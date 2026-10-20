@@ -1,0 +1,6 @@
+**
+!nightwatch/
+!nightwatch/pytest_plugin.py
+!docker/
+!docker/runner/
+!docker/runner/Dockerfile

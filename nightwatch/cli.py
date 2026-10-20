@@ -35,7 +35,7 @@ def cmd_run(args) -> int:
         from .dev.local_runner import LocalRunner
         runner = LocalRunner(args.repo)
     else:  # Timur's real runner
-        from runner import Runner  # type: ignore
+        from .docker_runner import Runner
         runner = Runner(args.repo)
     if args.verifier == "reference":
         from .dev.reference_verifier import ReferenceVerifier

@@ -7,6 +7,7 @@
 node_modules/
 venv/
 .venv/
+.uv-cache/
 __pycache__/
 *.pyc
 
@@ -33,6 +34,7 @@ Thumbs.db
 history/
 .pytest_cache/
 .demo-runs/
+.ui-runs/
 .demo-workspace/
 *.egg-info/
 .qa-results/
