@@ -21,6 +21,23 @@ Each switch is an incident event (`Escalating patch attempt 3 to …`), and ever
 its own model, tokens and cost. Leave the variable empty to disable escalation; `run_demo.py`
 disables it automatically when the model is not available in Token Factory.
 
+## Triage (optional)
+
+Set `NIGHTWATCH_TRIAGE_MODEL` (e.g. `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`) to add a cheap first
+look before the investigation. Nano classifies the failure (code bug, data, infrastructure, load),
+says whether it is likely reproducible and which evidence to read first. The result is stored in
+`Incident.triage`, logged as an event and passed to Super as a hint only — it never decides the
+outcome. A triage failure is logged and skipped; a budget stop still ends the incident. Off by
+default: keep it off until the evaluation shows it helps.
+
+## Scenarios in `run_demo.py`
+
+`scripts/run_demo.py` runs every `*.json` file in the demo alerts folder. The expected outcome is
+read from an optional top-level `"expected": "verified" | "reported"` field in the scenario file
+(the `Alert` model ignores it), falling back to the built-in table. Scenarios without an
+expectation are shown as `N/A` and do not affect the exit code. Every `reported` expectation gets
+the strict refusal checks (no patch attempts, a completed investigation, facts and next steps).
+
 ## Modules
 
 | File | What it does |

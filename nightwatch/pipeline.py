@@ -32,6 +32,7 @@ from .schemas import (
     Investigation,
     PatchProposal,
     RunResult,
+    Triage,
     Verdict,
 )
 
@@ -112,6 +113,27 @@ class Pipeline:
             self._note(inc, f"Escalating {step} attempt {attempt} to {model}")
         return model
 
+    def _triage(self, inc: Incident, user: str) -> str:
+        """Optional first look by a small model. Returns a hint for the investigation prompt.
+
+        A triage failure never stops the incident: the investigation simply runs without the hint.
+        """
+        if not self.s.triage_model:
+            return ""
+        try:
+            t = self.llm.complete_json("triage", prompts.TRIAGE_SYSTEM, user, Triage, inc.usage,
+                                       max_tokens=1024, model=self.s.triage_model)
+        except BudgetExceeded:
+            raise
+        except Exception as e:  # noqa: BLE001 — a hint is optional
+            self._note(inc, f"Triage skipped: {type(e).__name__}: {str(e)[:120]}")
+            return ""
+        inc.triage = t
+        self._note(inc, f"Triage ({self.s.triage_model}): {t.category}, "
+                        f"{'likely' if t.likely_reproducible else 'unlikely'} reproducible — {t.summary[:120]}")
+        return prompts.TRIAGE_HINT.format(category=t.category, reproducible=t.likely_reproducible,
+                                          summary=t.summary, focus=", ".join(t.focus) or "—")
+
     def _investigate_and_reproduce(self, inc: Incident) -> None:
         inc.move(IncidentState.investigating, "Collecting context")
         inc.evidence, inc.similar_incidents = self.context.build(inc.alert, exclude_incident=inc.id)
@@ -120,6 +142,7 @@ class Pipeline:
         self._save(inc)
 
         user = f"## Alert\n{inc.alert.title}\n\n## Evidence\n{render(inc.evidence)}"
+        user += self._triage(inc, user)
         for n in range(1, self.s.max_repro_attempts + 1):
             model = self._escalate(inc, n, "investigation") if n > 1 else None
             inv = self.llm.complete_json("investigate", prompts.INVESTIGATE_SYSTEM, user, Investigation, inc.usage,
