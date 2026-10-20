@@ -36,6 +36,7 @@ from .schemas import (
 )
 
 log = logging.getLogger("nightwatch.pipeline")
+REPORT_FALLBACK_PREFIX = "Diagnostic report unavailable:"
 
 REPRO_DIR = "tests/nightwatch/"
 _DIFF_FILE = re.compile(r"^(?:---|\+\+\+) (?:a/|b/)?(\S+)", re.M)
@@ -188,6 +189,8 @@ class Pipeline:
             report = self.llm.complete_json("report", prompts.REPORT_SYSTEM, user, DiagnosticReport, inc.usage, 2048)
         except Exception as e:
             log.warning("report via model failed: %s", e)
+            # Keep the useful fallback report, but expose the failed report call to acceptance checks.
+            self._note(inc, f"{REPORT_FALLBACK_PREFIX} {type(e).__name__}")
         if report is None:
             hyps = inc.investigation.hypotheses if inc.investigation else [
                 Hypothesis(summary="Not enough data for a hypothesis", confidence=0.0)]

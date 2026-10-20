@@ -51,6 +51,17 @@ python scripts/run_demo.py                # empty-sample must end verified, insu
 Each run goes to `.demo-runs/<time>/`: `summary.json`, the incident history and every prompt with the raw
 model reply in `model-calls/` (set `NIGHTWATCH_DEBUG_DIR` to get the same from the CLI).
 
+Daily spending stays in the configured `NIGHTWATCH_HISTORY/_spend.json` (default: `history/_spend.json`),
+shared with manual CLI runs using the same history setting. Selecting another `--output` directory
+does not reset the daily counter. Per-run incident history still goes to `<output>/history/`.
+The budget check happens before each request; it is not a prepaid reservation and does not provide
+atomic enforcement across simultaneous processes. An in-flight response can exceed the remaining limit.
+
+For `insufficient-evidence`, `reported` alone is not PASS. Acceptance requires a completed investigation,
+a diagnostic report with facts and next steps, and no patch attempts. Budget stops, failed report calls,
+runner errors and timeouts are FAIL, with an `acceptance_reason` in `summary.json`.
+Fallback diagnostic reports remain available to the UI, but do not count as a completed demo evaluation.
+
 Manual runs:
 
 ```bash
