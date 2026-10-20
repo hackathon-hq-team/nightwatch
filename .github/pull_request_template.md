@@ -1,14 +1,14 @@
-## Что сделано
-<!-- Коротко: что меняет этот PR -->
+## Changes
+<!-- Briefly describe what this PR changes -->
 
-## Связанная задача
+## Related task
 Closes #
 
-## Как проверить
+## Validation
 1.
 2.
 
-## Чек-лист
-- [ ] Проект запускается локально
-- [ ] Нет секретов и ключей в коде
-- [ ] Скриншот или видео, если менялся интерфейс
+## Checklist
+- [ ] The project runs locally
+- [ ] No credentials or secrets in code
+- [ ] Screenshot or video attached if the UI changed

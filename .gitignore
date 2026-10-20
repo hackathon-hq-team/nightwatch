@@ -1,28 +1,28 @@
-# Секреты
+# Secrets
 .env
 .env.*
 !.env.example
 
-# Зависимости
+# Dependencies
 node_modules/
 venv/
 .venv/
 __pycache__/
 *.pyc
 
-# Сборка
+# Build output
 dist/
 build/
 .next/
 out/
 coverage/
 
-# Логи
+# Logs
 *.log
 npm-debug.log*
 yarn-error.log*
 
-# IDE и ОС
+# IDE and OS
 .idea/
 .vscode/
 *.swp
@@ -33,3 +33,6 @@ Thumbs.db
 history/
 .pytest_cache/
 .demo-runs/
+.demo-workspace/
+*.egg-info/
+.qa-results/
