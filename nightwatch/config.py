@@ -35,6 +35,9 @@ class Settings:
         default_factory=lambda: os.getenv("NIGHTWATCH_ESCALATION_MODEL", "nvidia/Nemotron-3-Ultra-550b-a55b")
     )
 
+    # Small model for an optional first look (e.g. nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B); empty = off.
+    triage_model: str = field(default_factory=lambda: os.getenv("NIGHTWATCH_TRIAGE_MODEL", ""))
+
     history_dir: Path = field(default_factory=lambda: Path(os.getenv("NIGHTWATCH_HISTORY", "history")))
 
     # Limits

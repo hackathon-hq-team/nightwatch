@@ -120,6 +120,15 @@ class PatchProposal(BaseModel):
     evidence_ids: list[str] = Field(default_factory=list)
 
 
+class Triage(BaseModel):
+    """Cheap first look by a small model. A hint for the investigation, never a decision."""
+
+    category: str  # code_bug | data | infrastructure | load | unknown
+    likely_reproducible: bool
+    summary: str  # one sentence: what failed and where to look first
+    focus: list[str] = Field(default_factory=list)  # evidence ids or file paths worth reading first
+
+
 class DiagnosticReport(BaseModel):
     facts: list[str]
     hypotheses: list[Hypothesis]
@@ -218,6 +227,7 @@ class Incident(BaseModel):
 
     evidence: list[Evidence] = Field(default_factory=list)
     similar_incidents: list[str] = Field(default_factory=list)  # ids from history
+    triage: Triage | None = None  # only when NIGHTWATCH_TRIAGE_MODEL is set
     investigation: Investigation | None = None
     repro_broken: RunResult | None = None
     repro_good: RunResult | None = None

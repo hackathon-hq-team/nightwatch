@@ -145,3 +145,46 @@ def test_escalation_can_be_disabled(demo_repo, alert, tmp_path):
     assert inc.state == IncidentState.reported
     assert set(llm.models) == {None}
     assert not any(e.message.startswith("Escalating") for e in inc.events)
+
+
+NANO = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"
+TRIAGE = {"category": "code_bug", "likely_reproducible": True,
+          "summary": "average() divides by len(items) with an empty list", "focus": ["E1", "app/calc.py"]}
+
+
+def test_triage_is_off_by_default(demo_repo, alert, tmp_path):
+    pipe, llm = make(demo_repo, tmp_path, {"investigate": [INVESTIGATION], "patch": [PATCH]})
+    pipe.s.triage_model = ""
+    inc = pipe.run(alert)
+    assert inc.state == IncidentState.verified
+    assert "triage" not in [step for step, _ in llm.calls] and inc.triage is None
+
+
+def test_triage_hint_goes_to_investigation(demo_repo, alert, tmp_path):
+    pipe, llm = make(demo_repo, tmp_path, {"triage": [TRIAGE], "investigate": [INVESTIGATION], "patch": [PATCH]})
+    pipe.s.triage_model = NANO
+    inc = pipe.run(alert)
+    assert inc.state == IncidentState.verified
+    assert [step for step, _ in llm.calls][:2] == ["triage", "investigate"]
+    assert llm.models[0] == NANO and llm.models[1] is None
+    assert "a hint only" in llm.calls[1][1] and TRIAGE["summary"] in llm.calls[1][1]
+    assert inc.triage.category == "code_bug"
+    assert any(e.message.startswith(f"Triage ({NANO})") for e in inc.events)
+
+
+def test_triage_failure_does_not_stop_incident(demo_repo, alert, tmp_path):
+    pipe, llm = make(demo_repo, tmp_path, {"triage": [RuntimeError("bad json")], "investigate": [INVESTIGATION],
+                                           "patch": [PATCH]})
+    pipe.s.triage_model = NANO
+    inc = pipe.run(alert)
+    assert inc.state == IncidentState.verified and inc.triage is None
+    assert any(e.message.startswith("Triage skipped") for e in inc.events)
+    assert "a hint only" not in llm.calls[1][1]
+
+
+def test_triage_budget_stop_ends_in_report(demo_repo, alert, tmp_path):
+    pipe, _ = make(demo_repo, tmp_path, {"triage": [BudgetExceeded("incident budget")], "report": [REPORT]})
+    pipe.s.triage_model = NANO
+    inc = pipe.run(alert)
+    assert inc.state == IncidentState.reported
+    assert any(e.message.startswith("Stopped by budget") for e in inc.events)

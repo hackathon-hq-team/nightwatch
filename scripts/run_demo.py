@@ -34,21 +34,37 @@ from nightwatch.model_client import ModelClient, ModelError  # noqa: E402
 from nightwatch.pipeline import Pipeline, REPORT_FALLBACK_PREFIX  # noqa: E402
 from nightwatch.schemas import Alert, Incident, IncidentState  # noqa: E402
 
-# Scenario name → the outcome a correct agent must reach.
+# Scenario name → the outcome a correct agent must reach. A scenario file can also declare it
+# itself with a top-level "expected": "verified" | "reported" field (ignored by the Alert model).
 EXPECTED = {
     "empty-sample": IncidentState.verified,  # real, reproducible bug → verified patch
     "insufficient-evidence": IncidentState.reported,  # no evidence → report, never an invented fix
 }
 
 
-def assess_result(name: str, incident: Incident) -> tuple[bool, str]:
+def expected_outcome(name: str, scenario: dict) -> IncidentState | None:
+    """Expected outcome from the scenario file, else from EXPECTED; None — not declared."""
+    declared = scenario.get("expected")
+    if declared:
+        return IncidentState(declared)
+    return EXPECTED.get(name)
+
+
+def discover(alerts_dir: Path) -> list[str]:
+    """All scenario files: known ones first in EXPECTED order, then the rest alphabetically."""
+    found = sorted(p.stem for p in alerts_dir.glob("*.json"))
+    return [n for n in EXPECTED if n in found] + [n for n in found if n not in EXPECTED]
+
+
+def assess_result(name: str, incident: Incident, expected: IncidentState | None = None) -> tuple[bool, str]:
     """A report is successful acceptance only when it represents a completed refusal."""
-    if incident.state != EXPECTED[name]:
-        return False, f"expected {EXPECTED[name].value}, got {incident.state.value}"
+    expected = expected or EXPECTED[name]
+    if incident.state != expected:
+        return False, f"expected {expected.value}, got {incident.state.value}"
     if incident.error:
         return False, "incident contains a Nightwatch error"
-    if name != "insufficient-evidence":
-        return True, "expected verified outcome"
+    if expected != IncidentState.reported:
+        return True, f"expected {expected.value} outcome"
 
     # The pipeline also uses reported for budget stops; those are incomplete evaluations.
     if any(event.message.startswith("Stopped by budget:") for event in incident.events):
@@ -99,6 +115,12 @@ def check_model(client: ModelClient) -> bool:
         client.s.escalation_model = ""
     elif escalation:
         print(f"OK    escalation to {escalation}")
+    triage = client.s.triage_model
+    if triage and triage not in ids:
+        print(f"WARN  triage model {triage} is not available — triage disabled.")
+        client.s.triage_model = ""
+    elif triage:
+        print(f"OK    triage with {triage}")
     return True
 
 
@@ -121,7 +143,7 @@ def prepare(output: Path) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--scenario", choices=sorted(EXPECTED), help="run only this scenario")
+    ap.add_argument("--scenario", help="run only this scenario (file name in the alerts folder, without .json)")
     ap.add_argument("--output", type=Path, help="new directory for this run (default: .demo-runs/<time>)")
     ap.add_argument("--check-only", action="store_true", help="only check the key and model id")
     args = ap.parse_args()
@@ -150,17 +172,28 @@ def main() -> int:
 
     pipeline = Pipeline(client, LocalRunner(repo), verifier, RepoView(repo), HistoryStore(output / "history"),
                         settings)
-    names = [args.scenario] if args.scenario else list(EXPECTED)
+    alerts_dir = Path(demo["alerts"])
+    available = discover(alerts_dir)
+    if args.scenario and args.scenario not in available:
+        print(f"FAIL  unknown scenario {args.scenario!r}; available: {', '.join(available)}")
+        return 2
+    names = [args.scenario] if args.scenario else available
     results = []
     for name in names:
-        alert = Alert.model_validate_json((Path(demo["alerts"]) / f"{name}.json").read_text(encoding="utf-8"))
+        raw = (alerts_dir / f"{name}.json").read_text(encoding="utf-8")
+        alert = Alert.model_validate_json(raw)
+        expected = expected_outcome(name, json.loads(raw))
         print(f"=== {name}: {alert.title}")
         started = time.time()
         inc = pipeline.run(alert)
         for e in inc.events:
             print(f"  {e.at:%H:%M:%S}  {e.state.value:<13} {e.message[:150]}")
-        ok, acceptance_reason = assess_result(name, inc)
-        results.append({"scenario": name, "expected": EXPECTED[name].value, "got": inc.state.value, "ok": ok,
+        if expected is None:
+            ok, acceptance_reason = None, 'no expected outcome declared — add "expected" to the scenario file'
+        else:
+            ok, acceptance_reason = assess_result(name, inc, expected)
+        results.append({"scenario": name, "expected": expected.value if expected else None,
+                        "got": inc.state.value, "ok": ok,
                         "acceptance_reason": acceptance_reason,
                         "cost_usd": inc.usage.cost_usd, "tokens": inc.usage.tokens,
                         "model_calls": len(inc.usage.calls), "patch_attempts": len(inc.attempts),
@@ -172,15 +205,20 @@ def main() -> int:
             print("\n  Report next steps: " + "; ".join(inc.report.next_steps[:3]))
         if inc.error:
             print(f"\n  Nightwatch error: {inc.error.splitlines()[0]}")
-        print(f"  -> {'PASS' if ok else 'FAIL'}: {acceptance_reason}\n")
+        print(f"  -> {_verdict(ok)}: {acceptance_reason}\n")
 
     (output / "summary.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
     print(f"{'Scenario':<24}{'Result':<8}{'State':<11}{'Calls':>6}{'Tokens':>9}{'Cost $':>9}{'Sec':>7}")
     for r in results:
-        print(f"{r['scenario']:<24}{'PASS' if r['ok'] else 'FAIL':<8}{r['got']:<11}{r['model_calls']:>6}"
+        print(f"{r['scenario']:<24}{_verdict(r['ok']):<8}{r['got']:<11}{r['model_calls']:>6}"
               f"{r['tokens']:>9}{r['cost_usd']:>9.4f}{r['seconds']:>7}")
     print(f"\nSummary: {output / 'summary.json'}")
-    return 0 if all(r["ok"] for r in results) else 1
+    # Scenarios without a declared expectation are shown but do not decide the exit code.
+    return 0 if all(r["ok"] is not False for r in results) else 1
+
+
+def _verdict(ok: bool | None) -> str:
+    return "N/A" if ok is None else "PASS" if ok else "FAIL"
 
 
 if __name__ == "__main__":
