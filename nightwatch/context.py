@@ -27,7 +27,8 @@ class RepoView:
         self.path = Path(path)
 
     def _git(self, *args: str) -> str:
-        res = subprocess.run(["git", "-C", str(self.path), *args], capture_output=True, text=True, timeout=60)
+        res = subprocess.run(["git", "-C", str(self.path), *args], capture_output=True, text=True,
+                             encoding="utf-8", errors="replace", timeout=60)
         if res.returncode != 0:
             raise RuntimeError(f"git {' '.join(args)}: {res.stderr.strip()}")
         return res.stdout
@@ -104,7 +105,7 @@ class ContextBuilder:
         base = alert.previous_good_commit or self.repo.parent(alert.commit)
         if base:
             try:
-                add("diff", f"{base[:8]}..{alert.commit[:8]}", self.repo.log(base, alert.commit) + "\n" +
+                add("diff", f"recent changes {base[:8]}..{alert.commit[:8]} (may be unrelated to the alert)", self.repo.log(base, alert.commit) + "\n" +
                     self.repo.diff(base, alert.commit)[:40000])
             except RuntimeError:
                 pass

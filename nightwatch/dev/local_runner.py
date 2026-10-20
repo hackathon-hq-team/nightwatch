@@ -24,7 +24,7 @@ PLUGIN_ROOT = str(Path(__file__).resolve().parents[2])  # so pytest can find nig
 def apply_patch(workdir: Path, diff: str) -> tuple[bool, str]:
     """git apply with line recount; fallback — patch with fuzz."""
     patch_file = workdir / ".nightwatch.patch"
-    patch_file.write_text(diff if diff.endswith("\n") else diff + "\n", newline="\n")
+    patch_file.write_text(diff if diff.endswith("\n") else diff + "\n", encoding="utf-8", newline="\n")
     tries = [
         ["git", "apply", "--recount", "--whitespace=nowarn", str(patch_file)],
         ["patch", "-p1", "--forward", "--fuzz=3", "-i", str(patch_file)],
@@ -33,7 +33,7 @@ def apply_patch(workdir: Path, diff: str) -> tuple[bool, str]:
     for cmd in tries:
         if shutil.which(cmd[0]) is None:
             continue
-        res = subprocess.run(cmd, cwd=workdir, capture_output=True, text=True)
+        res = subprocess.run(cmd, cwd=workdir, capture_output=True, text=True, encoding="utf-8", errors="replace")
         if res.returncode == 0:
             patch_file.unlink(missing_ok=True)
             return True, ""
@@ -70,10 +70,10 @@ class LocalRunner:
         for rel, code in files.items():
             p = root / rel
             p.parent.mkdir(parents=True, exist_ok=True)
-            p.write_text(code)
+            p.write_text(code, encoding="utf-8", newline="\n")
             init = p.parent / "__init__.py"
             if p.parent.name == "nightwatch" and not init.exists():
-                init.write_text("")
+                init.write_text("", encoding="utf-8")
 
     def tests_hash(self, commit: str, test_files: dict[str, str]) -> str:
         root = self._checkout(commit)
@@ -103,11 +103,12 @@ class LocalRunner:
             cmd = [self.python, "-m", "pytest", "-q", "-p", "nightwatch.pytest_plugin", "-p", "no:cacheprovider",
                    *(select or [])]
             try:
-                res = subprocess.run(cmd, cwd=root, env=env, capture_output=True, text=True, timeout=self.timeout)
+                res = subprocess.run(cmd, cwd=root, env=env, capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                     timeout=self.timeout)
             except subprocess.TimeoutExpired as e:
                 return RunResult(commit=commit, status="timeout", exit_code=-1, patch_applied=applied,
                                  output_tail=str(e.stdout or "")[-3000:], duration_s=self.timeout)
-            data = json.loads(report.read_text()) if report.exists() else {"passed": [], "failures": []}
+            data = json.loads(report.read_text(encoding="utf-8")) if report.exists() else {"passed": [], "failures": []}
             failures = [TestFailure(**f) for f in data["failures"]]
             if res.returncode == 0:
                 status = "passed"

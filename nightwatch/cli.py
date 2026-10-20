@@ -19,7 +19,7 @@ from .schemas import Alert
 
 
 def _load_alert(path: str) -> Alert:
-    data = json.loads(Path(path).read_text())
+    data = json.loads(Path(path).read_text(encoding="utf-8"))
     if "exception" in data or "data" in data:
         from .sentry import alert_from_sentry
         return alert_from_sentry(data)

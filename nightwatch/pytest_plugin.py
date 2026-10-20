@@ -57,5 +57,5 @@ def pytest_runtest_logreport(report):
 def pytest_sessionfinish(session, exitstatus):
     path = os.environ.get("NIGHTWATCH_REPORT")
     if path:
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(_results, f)

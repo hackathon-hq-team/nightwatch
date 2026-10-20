@@ -91,7 +91,7 @@ class DailyBudget:
 
     def _load(self) -> dict:
         try:
-            return json.loads(self.path.read_text())
+            return json.loads(self.path.read_text(encoding="utf-8"))
         except (FileNotFoundError, json.JSONDecodeError):
             return {}
 
@@ -103,7 +103,7 @@ class DailyBudget:
         key = date.today().isoformat()
         data[key] = round(float(data.get(key, 0.0)) + usd, 6)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.path.write_text(json.dumps(data))
+        self.path.write_text(json.dumps(data), encoding="utf-8")
 
     def check(self) -> None:
         if self.spent_today() >= self.limit:
@@ -164,7 +164,7 @@ class ModelClient:
         path = self.s.debug_dir / f"{time.strftime('%Y%m%d-%H%M%S')}-{n:02d}-{step}{'-retry' if attempt else ''}.json"
         call = usage.calls[-1] if usage.calls else None
         path.write_text(json.dumps({"step": step, "model": self.model, "messages": messages, "reply": reply,
-                                    "usage": call.model_dump() if call else None}, ensure_ascii=False, indent=2))
+                                    "usage": call.model_dump() if call else None}, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # -- public
 
