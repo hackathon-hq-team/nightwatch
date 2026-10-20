@@ -1,38 +1,50 @@
-# 🚀 Название проекта
+# 🚀 Project name
 
-> Тема и название появятся на хакатоне. Этот репозиторий — шаблон: создавайте из него новый проект кнопкой **Use this template**.
+> The topic and project name will be defined at the hackathon. This repository is a template: create a project with **Use this template**.
 
-## 💡 Идея
-Коротко: какую проблему решаем и для кого (1–2 предложения).
+## 💡 Idea
+Briefly describe the problem and target users (1–2 sentences).
 
-## 🛠 Стек
+## 🛠 Stack
 - Frontend: —
 - Backend: —
-- Деплой: —
+- Deployment: —
 
-## ▶️ Как запустить
+## ▶️ Getting started
+
+Danik's verifier is implemented: [behaviour, validation and limitations](docs/verifier.md).
+Select it with the existing CLI option `--verifier team`.
+
+The demo project and two scenarios are ready for integration:
+[setup instructions for Nikita and Timur](docs/demo-handoff.md).
+Prepare from the repository root: `python -m tools.prepare_demo --output .demo-workspace`.
+This is an initial mechanism check; live model calls and container integration require separate validation.
+
+Combined verifier/demo validation and failure checks:
+[QA instructions](docs/qa-integration.md).
+
 ```bash
-# 1. Клонировать репозиторий
+# 1. Clone the repository
 git clone <url>
 cd <repo>
 
-# 2. Скопировать переменные окружения и заполнить их
+# 2. Copy the environment template and configure values
 cp .env.example .env
 
-# 3. Установить зависимости и запустить
-# (заполнить, когда будет стек)
+# 3. Install dependencies and run
+# (complete when the stack is ready)
 ```
 
-## 🌐 Демо
-Ссылка на задеплоенную версию: —
+## 🌐 Demo
+Deployed demo URL: —
 
-## 👥 Команда
-| Участник | Роль |
+## 👥 Team
+| Member | Role |
 |----------|------|
 | — | — |
 
-## 🔀 Правила работы
-- `main` всегда рабочая, изменения только через Pull Request.
-- Ветка на задачу: `feat/...`, `fix/...`, `docs/...`.
-- Каждая задача — issue на доске GitHub Projects.
-- Секреты не коммитим: только `.env.example` без значений.
+## 🔀 Workflow
+- Keep `main` working; submit changes through pull requests.
+- One branch per task: `feat/...`, `fix/...`, `docs/...`.
+- Track each task as an issue on the GitHub Projects board.
+- Never commit secrets; include only `.env.example` without secret values.
