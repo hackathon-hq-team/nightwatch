@@ -24,7 +24,7 @@ PLUGIN_ROOT = str(Path(__file__).resolve().parents[2])  # so pytest can find nig
 def apply_patch(workdir: Path, diff: str) -> tuple[bool, str]:
     """git apply with line recount; fallback — patch with fuzz."""
     patch_file = workdir / ".nightwatch.patch"
-    patch_file.write_text(diff if diff.endswith("\n") else diff + "\n")
+    patch_file.write_text(diff if diff.endswith("\n") else diff + "\n", newline="\n")
     tries = [
         ["git", "apply", "--recount", "--whitespace=nowarn", str(patch_file)],
         ["patch", "-p1", "--forward", "--fuzz=3", "-i", str(patch_file)],
