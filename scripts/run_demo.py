@@ -31,14 +31,51 @@ from nightwatch.context import RepoView  # noqa: E402
 from nightwatch.dev.local_runner import LocalRunner  # noqa: E402
 from nightwatch.history import HistoryStore  # noqa: E402
 from nightwatch.model_client import ModelClient, ModelError  # noqa: E402
-from nightwatch.pipeline import Pipeline  # noqa: E402
-from nightwatch.schemas import Alert, IncidentState  # noqa: E402
+from nightwatch.pipeline import Pipeline, REPORT_FALLBACK_PREFIX  # noqa: E402
+from nightwatch.schemas import Alert, Incident, IncidentState  # noqa: E402
 
 # Scenario name → the outcome a correct agent must reach.
 EXPECTED = {
     "empty-sample": IncidentState.verified,  # real, reproducible bug → verified patch
     "insufficient-evidence": IncidentState.reported,  # no evidence → report, never an invented fix
 }
+
+
+def assess_result(name: str, incident: Incident) -> tuple[bool, str]:
+    """A report is successful acceptance only when it represents a completed refusal."""
+    if incident.state != EXPECTED[name]:
+        return False, f"expected {EXPECTED[name].value}, got {incident.state.value}"
+    if incident.error:
+        return False, "incident contains a Nightwatch error"
+    if name != "insufficient-evidence":
+        return True, "expected verified outcome"
+
+    # The pipeline also uses reported for budget stops; those are incomplete evaluations.
+    if any(event.message.startswith("Stopped by budget:") for event in incident.events):
+        return False, "budget exhausted before evaluation completed"
+    if any(event.message.startswith(REPORT_FALLBACK_PREFIX) for event in incident.events):
+        return False, "diagnostic report call failed; fallback is not a completed evaluation"
+    if incident.attempts or incident.final_patch is not None:
+        return False, "insufficient evidence must not trigger patch generation"
+    if incident.investigation is None:
+        return False, "no completed investigation"
+    if incident.report is None or not incident.report.facts or not incident.report.next_steps:
+        return False, "missing diagnostic facts or next steps"
+
+    investigation = incident.investigation
+    if investigation.repro_test is None:
+        if not investigation.not_reproducible_reason.strip():
+            return False, "missing explanation of insufficient evidence"
+    else:
+        verdict = incident.repro_verdict
+        broken = incident.repro_broken
+        if verdict is None or verdict.ok or broken is None:
+            return False, "no evidence that the proposed reproduction was rejected"
+        # Import failures, timeouts and missing tests are tool failures, not a correct refusal.
+        results = [broken] + ([incident.repro_good] if incident.repro_good is not None else [])
+        if any((run.status, run.exit_code) not in (("passed", 0), ("failed", 1)) for run in results):
+            return False, "runner failure prevented evaluation"
+    return True, "completed investigation reported insufficient evidence without requesting a patch"
 
 
 def check_model(client: ModelClient) -> bool:
@@ -85,7 +122,9 @@ def main() -> int:
     output = (args.output or ROOT / ".demo-runs" / time.strftime("%Y%m%d-%H%M%S")).resolve()
     os.environ.setdefault("NIGHTWATCH_DEBUG_DIR", str(output / "model-calls"))
     settings = Settings()
-    settings.history_dir = output / "history"
+    # Keep the configured shared budget location across runs. Incident artifacts still belong
+    # to each output directory, but ModelClient's DailyBudget must not reset with --output.
+    settings.history_dir = settings.history_dir.resolve()
 
     try:
         client = ModelClient(settings)
@@ -102,7 +141,7 @@ def main() -> int:
     verifier, verifier_name = load_verifier()
     print(f"\nDemo repository: {repo}\nVerifier: {verifier_name}\nModel calls: {settings.debug_dir}\n")
 
-    pipeline = Pipeline(client, LocalRunner(repo), verifier, RepoView(repo), HistoryStore(settings.history_dir),
+    pipeline = Pipeline(client, LocalRunner(repo), verifier, RepoView(repo), HistoryStore(output / "history"),
                         settings)
     names = [args.scenario] if args.scenario else list(EXPECTED)
     results = []
@@ -113,8 +152,9 @@ def main() -> int:
         inc = pipeline.run(alert)
         for e in inc.events:
             print(f"  {e.at:%H:%M:%S}  {e.state.value:<13} {e.message[:150]}")
-        ok = inc.state == EXPECTED[name]
+        ok, acceptance_reason = assess_result(name, inc)
         results.append({"scenario": name, "expected": EXPECTED[name].value, "got": inc.state.value, "ok": ok,
+                        "acceptance_reason": acceptance_reason,
                         "cost_usd": inc.usage.cost_usd, "tokens": inc.usage.tokens,
                         "model_calls": len(inc.usage.calls), "patch_attempts": len(inc.attempts),
                         "seconds": round(time.time() - started, 1), "incident": inc.id})
@@ -124,7 +164,7 @@ def main() -> int:
             print("\n  Report next steps: " + "; ".join(inc.report.next_steps[:3]))
         if inc.error:
             print(f"\n  Nightwatch error: {inc.error.splitlines()[0]}")
-        print(f"  -> {'PASS' if ok else 'FAIL'}: expected {EXPECTED[name].value}, got {inc.state.value}\n")
+        print(f"  -> {'PASS' if ok else 'FAIL'}: {acceptance_reason}\n")
 
     (output / "summary.json").write_text(json.dumps(results, indent=2))
     print(f"{'Scenario':<24}{'Result':<8}{'State':<11}{'Calls':>6}{'Tokens':>9}{'Cost $':>9}{'Sec':>7}")
