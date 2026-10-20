@@ -39,5 +39,8 @@ class Settings:
     max_diff_lines: int = 200
     request_timeout_s: float = 180.0
 
+    # When set, every model call (prompt and raw reply) is saved here for prompt debugging.
+    debug_dir: Path | None = field(default_factory=lambda: Path(d) if (d := os.getenv("NIGHTWATCH_DEBUG_DIR")) else None)
+
     def price(self, model: str) -> tuple[float, float]:
         return DEFAULT_PRICES.get(model, DEFAULT_PRICES["nvidia/nemotron-3-super-120b-a12b"])

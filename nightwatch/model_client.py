@@ -155,6 +155,17 @@ class ModelClient:
             raise BudgetExceeded(f"incident budget ${self.s.incident_budget_usd:.2f} exhausted")
         self.daily.check()
 
+    def _dump(self, step: str, attempt: int, messages: list[dict], reply: str, usage: Usage) -> None:
+        """Save the exact prompt and raw reply when NIGHTWATCH_DEBUG_DIR is set."""
+        if not self.s.debug_dir:
+            return
+        self.s.debug_dir.mkdir(parents=True, exist_ok=True)
+        n = len(usage.calls)
+        path = self.s.debug_dir / f"{time.strftime('%Y%m%d-%H%M%S')}-{n:02d}-{step}{'-retry' if attempt else ''}.json"
+        call = usage.calls[-1] if usage.calls else None
+        path.write_text(json.dumps({"step": step, "model": self.model, "messages": messages, "reply": reply,
+                                    "usage": call.model_dump() if call else None}, ensure_ascii=False, indent=2))
+
     # -- public
 
     def complete_json(self, step: str, system: str, user: str, schema: type[T], usage: Usage,
@@ -171,6 +182,7 @@ class ModelClient:
             resp = self._chat(messages, max_tokens)
             self._record(step if attempt == 0 else f"{step}:retry", resp, started, usage)
             text = resp.choices[0].message.content or ""
+            self._dump(step, attempt, messages, text, usage)
             try:
                 return schema.model_validate(extract_json(text))
             except (ValueError, ValidationError) as e:

@@ -32,6 +32,7 @@ Thumbs.db
 # Nightwatch
 history/
 .pytest_cache/
+.demo-runs/
 .demo-workspace/
 *.egg-info/
 .qa-results/
