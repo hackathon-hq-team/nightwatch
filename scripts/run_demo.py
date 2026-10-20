@@ -92,6 +92,13 @@ def check_model(client: ModelClient) -> bool:
         print(f"FAIL  {client.model} is not available. Set NIGHTWATCH_MODEL in .env to one of the ids above.")
         return False
     print(f"OK    using {client.model}")
+    escalation = client.s.escalation_model
+    if escalation and escalation not in ids:
+        print(f"WARN  escalation model {escalation} is not available — escalation disabled. "
+              "Set NIGHTWATCH_ESCALATION_MODEL to one of the ids above, or leave it empty.")
+        client.s.escalation_model = ""
+    elif escalation:
+        print(f"OK    escalation to {escalation}")
     return True
 
 
@@ -157,6 +164,7 @@ def main() -> int:
                         "acceptance_reason": acceptance_reason,
                         "cost_usd": inc.usage.cost_usd, "tokens": inc.usage.tokens,
                         "model_calls": len(inc.usage.calls), "patch_attempts": len(inc.attempts),
+                        "models": sorted({c.model for c in inc.usage.calls}),
                         "seconds": round(time.time() - started, 1), "incident": inc.id})
         if inc.final_patch:
             print("\n  Verified patch:\n" + "\n".join("    " + ln for ln in inc.final_patch.diff.splitlines()))

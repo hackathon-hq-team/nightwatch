@@ -12,12 +12,15 @@ try:  # python-dotenv is optional
 except ImportError:  # pragma: no cover
     pass
 
-# Price per 1M tokens (input, output), USD. Check against the Token Factory console.
+# Price per 1M tokens (input, output), USD. Keys are lower-case Token Factory model ids.
+# Check against the Token Factory console.
 DEFAULT_PRICES: dict[str, tuple[float, float]] = {
     "nvidia/nemotron-3-super-120b-a12b": (0.30, 0.90),
-    "nvidia/nemotron-3-nano-30b-a3b": (0.06, 0.24),
+    "nvidia/nvidia-nemotron-3-nano-30b-a3b": (0.06, 0.24),
     "nvidia/nemotron-3-ultra-550b-a55b": (0.60, 2.40),
 }
+# Unknown models are billed at the most expensive known price, so budgets stay conservative.
+FALLBACK_PRICE = max(DEFAULT_PRICES.values(), key=sum)
 
 
 @dataclass
@@ -27,6 +30,10 @@ class Settings:
         default_factory=lambda: os.getenv("NEBIUS_BASE_URL", "https://api.tokenfactory.nebius.com/v1/")
     )
     model: str = field(default_factory=lambda: os.getenv("NIGHTWATCH_MODEL", "nvidia/nemotron-3-super-120b-a12b"))
+    # Stronger model used after the main one fails; empty string disables escalation.
+    escalation_model: str = field(
+        default_factory=lambda: os.getenv("NIGHTWATCH_ESCALATION_MODEL", "nvidia/Nemotron-3-Ultra-550b-a55b")
+    )
 
     history_dir: Path = field(default_factory=lambda: Path(os.getenv("NIGHTWATCH_HISTORY", "history")))
 
@@ -34,6 +41,7 @@ class Settings:
     context_token_budget: int = field(default_factory=lambda: int(os.getenv("NIGHTWATCH_CONTEXT_TOKENS", "150000")))
     max_repro_attempts: int = 2  # how many times the reproduction test may be rewritten
     max_patch_attempts: int = 3
+    escalate_after_failures: int = 2  # patch attempts with the main model before the escalation model
     incident_budget_usd: float = field(default_factory=lambda: float(os.getenv("NIGHTWATCH_INCIDENT_BUDGET", "0.50")))
     daily_budget_usd: float = field(default_factory=lambda: float(os.getenv("NIGHTWATCH_DAILY_BUDGET", "5.00")))
     max_diff_lines: int = 200
@@ -43,4 +51,4 @@ class Settings:
     debug_dir: Path | None = field(default_factory=lambda: Path(d) if (d := os.getenv("NIGHTWATCH_DEBUG_DIR")) else None)
 
     def price(self, model: str) -> tuple[float, float]:
-        return DEFAULT_PRICES.get(model, DEFAULT_PRICES["nvidia/nemotron-3-super-120b-a12b"])
+        return DEFAULT_PRICES.get(model.lower(), FALLBACK_PRICE)

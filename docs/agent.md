@@ -9,6 +9,18 @@ alert → context.py → Nemotron Super: hypotheses + test → runner (broken an
                                       ↑ up to 3 attempts, the rejection reason feeds the next one
 ```
 
+## Model escalation
+
+Nemotron 3 Super does the work. After failures the pipeline switches to the escalation model
+(`NIGHTWATCH_ESCALATION_MODEL`, default Nemotron 3 Ultra):
+
+- the second investigation attempt, after the first reproduction test was rejected;
+- patch attempts after `escalate_after_failures` (2) rejected patches.
+
+Each switch is an incident event (`Escalating patch attempt 3 to …`), and every model call records
+its own model, tokens and cost. Leave the variable empty to disable escalation; `run_demo.py`
+disables it automatically when the model is not available in Token Factory.
+
 ## Modules
 
 | File | What it does |
