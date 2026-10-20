@@ -12,6 +12,10 @@ Briefly describe the problem and target users (1–2 sentences).
 
 ## ▶️ Getting started
 
+Streamlit operator console: [UI setup and demo modes](docs/ui.md).
+
+Docker runner setup and isolation checks: [instructions for Timur](docs/docker-runner.md).
+
 Danik's verifier is implemented: [behaviour, validation and limitations](docs/verifier.md).
 Select it with the existing CLI option `--verifier team`.
 

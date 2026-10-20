@@ -17,6 +17,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["ruff"]
+ui = ["streamlit>=1.66,<2"]
 
 [tool.setuptools.packages.find]
 include = ["nightwatch*"]
