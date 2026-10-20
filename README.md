@@ -15,6 +15,11 @@ Briefly describe the problem and target users (1–2 sentences).
 Danik's verifier is implemented: [behaviour, validation and limitations](docs/verifier.md).
 Select it with the existing CLI option `--verifier team`.
 
+The demo project and two scenarios are ready for integration:
+[setup instructions for Nikita and Timur](docs/demo-handoff.md).
+Prepare from the repository root: `python -m tools.prepare_demo --output .demo-workspace`.
+This is an initial mechanism check; live model calls and container integration require separate validation.
+
 ```bash
 # 1. Clone the repository
 git clone <url>
