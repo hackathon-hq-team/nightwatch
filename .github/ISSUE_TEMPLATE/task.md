@@ -1,19 +1,19 @@
 ---
-name: "✅ Задача"
-about: Новая задача для команды
+name: "✅ Task"
+about: A new task for the team
 title: "[TASK] "
 labels: task
 assignees: ""
 ---
 
-## Что нужно сделать
-<!-- Коротко и конкретно -->
+## Work required
+<!-- Be brief and specific -->
 
-## Критерий готовности
+## Acceptance criteria
 - [ ]
 
-## Зона
+## Area
 - [ ] Frontend
 - [ ] Backend
-- [ ] Дизайн
-- [ ] Презентация
+- [ ] Design
+- [ ] Presentation

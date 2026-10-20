@@ -1,20 +1,20 @@
 ---
-name: "🐛 Баг"
-about: Что-то сломалось
+name: "🐛 Bug"
+about: Report a problem
 title: "[BUG] "
 labels: bug
 assignees: ""
 ---
 
-## Что сломалось
-<!-- Коротко -->
+## Problem
+<!-- Keep it brief -->
 
-## Как воспроизвести
+## Steps to reproduce
 1.
 2.
 
-## Ожидалось / получилось
-- Ожидалось:
-- Получилось:
+## Expected / actual behaviour
+- Expected:
+- Actual:
 
-## Скриншот или лог
+## Screenshot or log
