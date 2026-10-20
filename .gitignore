@@ -34,3 +34,4 @@ history/
 .pytest_cache/
 .demo-workspace/
 *.egg-info/
+.qa-results/

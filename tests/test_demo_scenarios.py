@@ -2,7 +2,7 @@ import pytest
 
 from evaluation.oracle import AVERAGE_CASES, expected_average
 from nightwatch.dev.local_runner import LocalRunner
-from nightwatch.dev.reference_verifier import ReferenceVerifier
+from verifier import Verifier
 from nightwatch.schemas import Alert, ReproTest
 from tools.prepare_demo import git, prepare
 
@@ -55,7 +55,7 @@ def test_real_failure_good_version_and_frozen_acceptance(prepared):
     assert len(baseline.passed) == 4
     broken = runner.run(alert.commit, files, select=[test.path])
     good = runner.run(alert.previous_good_commit, files, select=[test.path])
-    assert ReferenceVerifier().check_reproduction(alert, test, broken, good).ok
+    assert Verifier().check_reproduction(alert, test, broken, good).ok
     assert broken.failures[0].function == "average"
     assert broken.failures[0].file == "app/calc.py"
     assert "ZeroDivisionError" in alert.logs
@@ -69,7 +69,7 @@ def test_real_failure_good_version_and_frozen_acceptance(prepared):
     files["tests/nightwatch/test_reference.py"] = acceptance
     frozen = runner.tests_hash(alert.commit, files)
     after = runner.run(alert.commit, files, patch=patch)
-    assert ReferenceVerifier().check_patch(alert, test, after, frozen).ok, after.output_tail
+    assert Verifier().check_patch(alert, test, after, frozen).ok, after.output_tail
     assert len(after.passed) == 6
 
     # 'Always zero' fixes the empty case but must fail the non-empty answers.
@@ -81,7 +81,7 @@ def test_real_failure_good_version_and_frozen_acceptance(prepared):
                                          fromfile="a/app/calc.py", tofile="b/app/calc.py"))
     bad = runner.run(alert.commit, files, patch=bad_patch)
     assert bad.patch_applied is True
-    assert not ReferenceVerifier().check_patch(alert, test, bad, frozen).ok
+    assert not Verifier().check_patch(alert, test, bad, frozen).ok
     assert bad.tests_hash == frozen
     assert git(repo, "rev-parse", "HEAD") == manifest["broken_commit"]
     assert git(repo, "status", "--porcelain") == ""
@@ -94,7 +94,7 @@ def test_different_bug_cannot_confirm_insufficient_evidence(prepared):
     assert "SYNTHETIC" in alert.logs
     test = reproducer(alert)
     broken = LocalRunner(output / "repo").run(alert.commit, {test.path: test.code}, select=[test.path])
-    assert not ReferenceVerifier().check_reproduction(alert, test, broken, None).ok
+    assert not Verifier().check_reproduction(alert, test, broken, None).ok
 
 
 def test_no_evidence_ends_in_report_without_patch(prepared, tmp_path):
@@ -111,7 +111,7 @@ def test_no_evidence_ends_in_report_without_patch(prepared, tmp_path):
     }], "report": [{"facts": ["No reproducible input supplied"],
                      "hypotheses": [{"summary": "Memory pressure", "confidence": 0.1}],
                      "next_steps": ["Collect stack trace, input and load profile"]}]})
-    pipeline = Pipeline(llm, LocalRunner(output / "repo"), ReferenceVerifier(),
+    pipeline = Pipeline(llm, LocalRunner(output / "repo"), Verifier(),
                         RepoView(output / "repo"), HistoryStore(tmp_path), Settings())
     incident = pipeline.run(load_alert(output, "insufficient-evidence"))
     assert incident.state.value == "reported"

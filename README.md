@@ -20,6 +20,9 @@ The demo project and two scenarios are ready for integration:
 Prepare from the repository root: `python -m tools.prepare_demo --output .demo-workspace`.
 This is an initial mechanism check; live model calls and container integration require separate validation.
 
+Combined verifier/demo validation and failure checks:
+[QA instructions](docs/qa-integration.md).
+
 ```bash
 # 1. Clone the repository
 git clone <url>
