@@ -12,7 +12,7 @@ from nightwatch.context import RepoView
 from nightwatch.dev.local_runner import LocalRunner
 from nightwatch.history import HistoryStore
 from nightwatch.pipeline import Pipeline
-from test_demo_scenarios import load_alert, prepared, reproducer
+from test_demo_scenarios import load_alert, reproducer
 from tools.prepare_demo import EMPTY_GUARD, RETURN_LINE
 from verifier import Verifier
 

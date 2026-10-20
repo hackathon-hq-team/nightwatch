@@ -126,7 +126,7 @@ def main() -> int:
             print(f"\n  Nightwatch error: {inc.error.splitlines()[0]}")
         print(f"  -> {'PASS' if ok else 'FAIL'}: expected {EXPECTED[name].value}, got {inc.state.value}\n")
 
-    (output / "summary.json").write_text(json.dumps(results, indent=2))
+    (output / "summary.json").write_text(json.dumps(results, indent=2), encoding="utf-8")
     print(f"{'Scenario':<24}{'Result':<8}{'State':<11}{'Calls':>6}{'Tokens':>9}{'Cost $':>9}{'Sec':>7}")
     for r in results:
         print(f"{r['scenario']:<24}{'PASS' if r['ok'] else 'FAIL':<8}{r['got']:<11}{r['model_calls']:>6}"

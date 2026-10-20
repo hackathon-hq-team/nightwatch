@@ -27,17 +27,17 @@ class HistoryStore:
 
     def save(self, incident: Incident) -> None:
         tmp = self.path(incident.id).with_suffix(".tmp")
-        tmp.write_text(incident.model_dump_json(indent=2))
+        tmp.write_text(incident.model_dump_json(indent=2), encoding="utf-8")
         tmp.replace(self.path(incident.id))  # atomic: the UI never reads half a file
 
     def load(self, incident_id: str) -> Incident:
-        return Incident.model_validate_json(self.path(incident_id).read_text())
+        return Incident.model_validate_json(self.path(incident_id).read_text(encoding="utf-8"))
 
     def all(self) -> list[Incident]:
         out = []
         for p in sorted(self.root.glob("inc-*.json")):
             try:
-                out.append(Incident.model_validate_json(p.read_text()))
+                out.append(Incident.model_validate_json(p.read_text(encoding="utf-8")))
             except Exception:  # a broken file must not crash the UI
                 continue
         return sorted(out, key=lambda i: i.created_at, reverse=True)
