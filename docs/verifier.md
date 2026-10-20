@@ -1,42 +1,41 @@
-# Проверяющий механизм — часть Даника
+# Verifier: Danik's component
 
-`verifier.py` реализует существующий `nightwatch.contracts.Verifier`, не меняя общий формат данных.
-Подключение из CLI: добавить `--verifier team` к команде запуска. По умолчанию CLI пока использует
-демонстрационный `ReferenceVerifier`; runner и доступ к модели настраиваются отдельно.
+`verifier.py` implements the existing `nightwatch.contracts.Verifier` interface without changing
+shared data models. Select it with `--verifier team` in the CLI. The default remains the development
+`ReferenceVerifier`; runner integration and model access are configured separately.
 
-## Ожидаемое поведение
+## Expected behaviour
 
-- Воспроизведение: pytest завершился с кодом 1 на нужной версии; упал именно тест из указанного файла.
-  Тип исключения, полное сообщение из сигнатуры alert, файл и функция должны совпасть.
-  Сообщение alert ищется как подстрока без обрезания и обратного сравнения.
-- Если предыдущая рабочая версия известна, обязателен её результат: нужный тест действительно прошёл,
-  код выхода равен нулю, список ошибок пуст. Отсутствие результата не считается успехом.
-- Патч: применение явно подтверждено (`True`), контрольная сумма тестов совпала с непустой исходной,
-  воспроизводящий тест прошёл, общий результат успешен, код выхода нулевой, ошибок нет.
-- Ошибка импорта, таймаут, похожее имя другого тестового файла и падение на подготовке теста
-  не подтверждают нужную ошибку.
+- Reproduction requires pytest exit code 1 on the requested broken commit and a failure from the
+  exact reproducer file. Exception type, the full alert-signature message, file and function must match.
+  The alert message is matched as a substring without truncation or reverse substring matching.
+- When a previous good version is known, its result is required: the actual reproducer must pass,
+  the exit code must be zero and the failure list empty. Missing evidence is not success.
+- A patch must be explicitly applied (`True`), preserve the non-empty baseline test hash, pass the
+  reproducer and suite, exit with zero and contain no recorded failures.
+- Import errors, timeouts, similar filenames and setup failures do not confirm the target bug.
 
-## Проверка
+## Validation
 
-Из корня репозитория: `python -m pytest -q`.
-`tests/test_verifier.py` проверяет как допустимые результаты, так и ложный успех.
-Интеграционная проверка запускает настоящие тесты маленького временного проекта через существующий
-`LocalRunner`, но ответ модели заменён заранее записанным примером. Это не вызов NVIDIA через Nebius.
+From the repository root: `python -m pytest -q`.
+`tests/test_verifier.py` covers valid results and false-success cases. Integration runs real tests
+in a small temporary project through the existing `LocalRunner`, with scripted model responses.
+This is not an NVIDIA/Nebius API call.
 
-Проверено 20 октября 2026 на Windows, Python 3.11.9: **39 тестов прошли**.
-Для интеграции исправлена запись diff в `nightwatch/dev/local_runner.py`: файл патча сохраняется
-с LF, чтобы Windows не превращала его в повреждённый для `git apply` патч.
+Validated on 20 October 2026, Windows / Python 3.11.9: 39 tests passed.
+The integration fix in `nightwatch/dev/local_runner.py` writes patch files with LF so Windows
+newline conversion does not produce a corrupt patch for `git apply`.
 
-## Ограничения и зависимости
+## Limitations and dependencies
 
-Verifier доверяет результатам runner. Текущий RunResult не содержит списка всех собранных и пропущенных
-тестов или признака запуска полного набора. Поэтому доказать отсутствие пропусков или исчезновения
-тестов только по этому договору нельзя. Полный запуск и корректные контрольные суммы обеспечивает runner.
-Запрет изменения файлов вне разрешённой области проверяет pipeline, а не этот модуль.
-Для сообщений с меняющимися идентификаторами понадобится согласованный способ задать стабильную сигнатуру;
-сейчас используется сигнатура, которую возвращает `Alert.signature()`.
+The verifier trusts runner results. The current RunResult does not expose all collected and skipped
+tests or whether the full suite ran. This contract alone cannot prove that no tests disappeared or
+were skipped. Complete execution and correct test hashes are the runner's responsibility.
+Patch scope is checked by the pipeline, not this module.
+Messages containing changing identifiers require an agreed stable-signature mechanism; this module
+currently uses the signature returned by `Alert.signature()`.
 
-При настройке среды обнаружена существующая ошибка `pip install -e .`: setuptools видит несколько
-пакетов верхнего уровня (`scenarios`, `nightwatch`). Для проверки из исходной папки зависимости можно
-установить напрямую: `python -m pip install openai pydantic python-dotenv pytest`.
-Исправление упаковки и закрепление версий зависимостей — отдельная общая задача.
+Environment setup exposed an existing `pip install -e .` issue: setuptools discovers multiple
+top-level packages (`scenarios`, `nightwatch`). For testing from source, dependencies can be installed
+directly: `python -m pip install openai pydantic python-dotenv pytest`.
+Packaging fixes and dependency version pinning remain a separate shared task.
