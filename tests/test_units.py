@@ -86,3 +86,13 @@ def test_alert_from_sentry_webhook():
 def test_alert_from_sentry_requires_release():
     with pytest.raises(ValueError):
         alert_from_sentry({"exception": {"values": [{"type": "E", "value": "v"}]}})
+
+
+def test_debug_dir_saves_prompt_and_raw_reply(tmp_path):
+    c = _client(tmp_path, ['<think>x</think>{"diff": "d", "explanation": "e"}'], incident_budget_usd=10,
+                debug_dir=tmp_path / "calls")
+    c.complete_json("patch", "sys", "user", PatchProposal, Usage())
+    files = list((tmp_path / "calls").glob("*-patch.json"))
+    assert len(files) == 1
+    saved = __import__("json").loads(files[0].read_text())
+    assert saved["reply"].startswith("<think>") and saved["messages"][1]["content"] == "user"

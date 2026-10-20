@@ -41,6 +41,18 @@ Implement `contracts.Verifier`: `check_reproduction(...)` and `check_patch(...)`
 
 ## Running
 
+First live run on Danik's demo scenarios (needs his PR #5 merged and a key in `.env`):
+
+```bash
+python scripts/run_demo.py --check-only   # key works, Nemotron model id is valid
+python scripts/run_demo.py                # empty-sample must end verified, insufficient-evidence reported
+```
+
+Each run goes to `.demo-runs/<time>/`: `summary.json`, the incident history and every prompt with the raw
+model reply in `model-calls/` (set `NIGHTWATCH_DEBUG_DIR` to get the same from the CLI).
+
+Manual runs:
+
 ```bash
 pip install -e .
 cp .env.example .env            # set NEBIUS_API_KEY
