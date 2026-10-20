@@ -107,9 +107,11 @@ class ScriptedLLM:
     def __init__(self, script: dict[str, list]):
         self.script = {k: list(v) for k, v in script.items()}
         self.calls: list[tuple[str, str]] = []
+        self.models: list[str | None] = []  # model override per call; None — the configured model
 
-    def complete_json(self, step, system, user, schema, usage: Usage, max_tokens=4096):
+    def complete_json(self, step, system, user, schema, usage: Usage, max_tokens=4096, model=None):
         self.calls.append((step, user))
+        self.models.append(model)
         queue = self.script.get(step) or []
         if not queue:
             raise AssertionError(f"no scripted reply for step {step}")

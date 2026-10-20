@@ -96,3 +96,20 @@ def test_debug_dir_saves_prompt_and_raw_reply(tmp_path):
     assert len(files) == 1
     saved = __import__("json").loads(files[0].read_text())
     assert saved["reply"].startswith("<think>") and saved["messages"][1]["content"] == "user"
+
+
+def test_model_override_is_sent_and_priced_per_model(tmp_path):
+    c = _client(tmp_path, ['{"diff": "d", "explanation": "e"}'], incident_budget_usd=10)
+    usage = Usage()
+    c.complete_json("patch", "s", "u", PatchProposal, usage, model="nvidia/Nemotron-3-Ultra-550b-a55b")
+    assert c._client.sent[0]["model"] == "nvidia/Nemotron-3-Ultra-550b-a55b"
+    assert usage.calls[0].model == "nvidia/Nemotron-3-Ultra-550b-a55b"
+    # 1M input × $0.60 + 0.1M output × $2.40 = $0.84 at Ultra prices
+    assert usage.cost_usd == pytest.approx(0.84)
+
+
+def test_unknown_model_is_priced_conservatively():
+    from nightwatch.config import FALLBACK_PRICE
+    s = Settings()
+    assert s.price("nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B") == (0.06, 0.24)
+    assert s.price("vendor/brand-new-model") == FALLBACK_PRICE == (0.60, 2.40)

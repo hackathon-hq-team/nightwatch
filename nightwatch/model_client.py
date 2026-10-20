@@ -36,7 +36,7 @@ class LLM(Protocol):
     """What the pipeline needs. Tests plug in a ScriptedLLM."""
 
     def complete_json(self, step: str, system: str, user: str, schema: type[T], usage: Usage,
-                      max_tokens: int = 4096) -> T: ...
+                      max_tokens: int = 4096, model: str | None = None) -> T: ...
 
 
 # --------------------------------------------------------------------------- JSON extraction
@@ -129,8 +129,8 @@ class ModelClient:
 
     # -- low level
 
-    def _chat(self, messages: list[dict], max_tokens: int):
-        kwargs = dict(model=self.model, messages=messages, max_tokens=max_tokens, temperature=0.2)
+    def _chat(self, messages: list[dict], max_tokens: int, model: str):
+        kwargs = dict(model=model, messages=messages, max_tokens=max_tokens, temperature=0.2)
         if self._json_mode:
             try:
                 return self._client.chat.completions.create(response_format={"type": "json_object"}, **kwargs)
@@ -140,13 +140,13 @@ class ModelClient:
                 self._json_mode = False
         return self._client.chat.completions.create(**kwargs)
 
-    def _record(self, step: str, resp, started: float, usage: Usage) -> None:
+    def _record(self, step: str, resp, started: float, usage: Usage, model: str) -> None:
         u = getattr(resp, "usage", None)
         pt = getattr(u, "prompt_tokens", 0) or 0
         ct = getattr(u, "completion_tokens", 0) or 0
-        pin, pout = self.s.price(self.model)
+        pin, pout = self.s.price(model)
         cost = pt / 1e6 * pin + ct / 1e6 * pout
-        usage.calls.append(ModelCall(step=step, model=self.model, prompt_tokens=pt, completion_tokens=ct,
+        usage.calls.append(ModelCall(step=step, model=model, prompt_tokens=pt, completion_tokens=ct,
                                      cost_usd=round(cost, 6), duration_s=round(time.time() - started, 2)))
         self.daily.add(cost)
 
@@ -163,13 +163,15 @@ class ModelClient:
         n = len(usage.calls)
         path = self.s.debug_dir / f"{time.strftime('%Y%m%d-%H%M%S')}-{n:02d}-{step}{'-retry' if attempt else ''}.json"
         call = usage.calls[-1] if usage.calls else None
-        path.write_text(json.dumps({"step": step, "model": self.model, "messages": messages, "reply": reply,
+        path.write_text(json.dumps({"step": step, "model": call.model if call else self.model, "messages": messages, "reply": reply,
                                     "usage": call.model_dump() if call else None}, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # -- public
 
     def complete_json(self, step: str, system: str, user: str, schema: type[T], usage: Usage,
-                      max_tokens: int = 4096) -> T:
+                      max_tokens: int = 4096, model: str | None = None) -> T:
+        """model overrides the configured model for this call (used for escalation)."""
+        model = model or self.model
         system = (
             f"{system}\n\nReply with ONLY one JSON object, no text around it. "
             f"JSON Schema of the reply:\n{schema_hint(schema)}"
@@ -179,8 +181,8 @@ class ModelClient:
         for attempt in range(2):
             self._check_budget(usage)
             started = time.time()
-            resp = self._chat(messages, max_tokens)
-            self._record(step if attempt == 0 else f"{step}:retry", resp, started, usage)
+            resp = self._chat(messages, max_tokens, model)
+            self._record(step if attempt == 0 else f"{step}:retry", resp, started, usage, model)
             text = resp.choices[0].message.content or ""
             self._dump(step, attempt, messages, text, usage)
             try:

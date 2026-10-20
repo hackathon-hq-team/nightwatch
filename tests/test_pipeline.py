@@ -110,3 +110,38 @@ def test_check_diff():
     assert check_diff("nonsense", 200)
     big = "--- a/app/x.py\n+++ b/app/x.py\n@@ -1 +1 @@\n" + "+a\n" * 300
     assert "too large" in check_diff(big, 200)
+
+
+ULTRA = "nvidia/Nemotron-3-Ultra-550b-a55b"
+
+
+def test_patch_escalates_to_stronger_model_after_two_failures(demo_repo, alert, tmp_path):
+    noop = {"diff": FIX_DIFF.replace("return 0", "return 1").replace("+    if not items:\n", "+    if items is None:\n"),
+            "explanation": "wrong guard"}
+    pipe, llm = make(demo_repo, tmp_path, {"investigate": [INVESTIGATION], "patch": [noop, noop, PATCH]})
+    pipe.s.escalation_model = ULTRA
+    inc = pipe.run(alert)
+    assert inc.state == IncidentState.verified
+    patch_models = [m for (step, _), m in zip(llm.calls, llm.models, strict=True) if step == "patch"]
+    assert patch_models == [None, None, ULTRA]
+    assert any(e.message == f"Escalating patch attempt 3 to {ULTRA}" for e in inc.events)
+
+
+def test_second_investigation_uses_stronger_model(demo_repo, alert, tmp_path):
+    passing = {**INVESTIGATION, "repro_test": {**INVESTIGATION["repro_test"], "code": "def test_ok():\n    assert True\n"}}
+    pipe, llm = make(demo_repo, tmp_path, {"investigate": [passing, INVESTIGATION], "patch": [PATCH]})
+    pipe.s.escalation_model = ULTRA
+    inc = pipe.run(alert)
+    assert inc.state == IncidentState.verified
+    assert llm.models[:2] == [None, ULTRA]
+
+
+def test_escalation_can_be_disabled(demo_repo, alert, tmp_path):
+    noop = {"diff": FIX_DIFF.replace("+    if not items:\n", "+    if items is None:\n"), "explanation": "x"}
+    pipe, llm = make(demo_repo, tmp_path, {"investigate": [INVESTIGATION], "patch": [noop, noop, noop],
+                                           "report": [REPORT]})
+    pipe.s.escalation_model = ""
+    inc = pipe.run(alert)
+    assert inc.state == IncidentState.reported
+    assert set(llm.models) == {None}
+    assert not any(e.message.startswith("Escalating") for e in inc.events)

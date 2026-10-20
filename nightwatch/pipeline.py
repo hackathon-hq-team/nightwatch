@@ -105,6 +105,13 @@ class Pipeline:
     def _note(self, inc: Incident, message: str) -> None:
         inc.move(inc.state, message)
 
+    def _escalate(self, inc: Incident, attempt: int, step: str) -> str | None:
+        """Model for a retry after failures: the escalation model if configured, else the main one."""
+        model = self.s.escalation_model or None
+        if model:
+            self._note(inc, f"Escalating {step} attempt {attempt} to {model}")
+        return model
+
     def _investigate_and_reproduce(self, inc: Incident) -> None:
         inc.move(IncidentState.investigating, "Collecting context")
         inc.evidence, inc.similar_incidents = self.context.build(inc.alert, exclude_incident=inc.id)
@@ -114,7 +121,9 @@ class Pipeline:
 
         user = f"## Alert\n{inc.alert.title}\n\n## Evidence\n{render(inc.evidence)}"
         for n in range(1, self.s.max_repro_attempts + 1):
-            inv = self.llm.complete_json("investigate", prompts.INVESTIGATE_SYSTEM, user, Investigation, inc.usage)
+            model = self._escalate(inc, n, "investigation") if n > 1 else None
+            inv = self.llm.complete_json("investigate", prompts.INVESTIGATE_SYSTEM, user, Investigation, inc.usage,
+                                         model=model)
             inc.investigation = inv
             if inv.repro_test is None:
                 self._report(inc, f"Model considers the failure not reproducible: {inv.not_reproducible_reason}")
@@ -156,7 +165,8 @@ class Pipeline:
                 evidence=render(inc.evidence), hypothesis=self._fmt_hyp(best), test_path=test.path,
                 test_code=test.code, files=self._files_for_patch(inc), previous=previous)
             system = prompts.PATCH_SYSTEM.format(max_lines=self.s.max_diff_lines)
-            proposal = self.llm.complete_json("patch", system, user, PatchProposal, inc.usage)
+            model = self._escalate(inc, n, "patch") if n > self.s.escalate_after_failures else None
+            proposal = self.llm.complete_json("patch", system, user, PatchProposal, inc.usage, model=model)
             attempt = Attempt(n=n, patch=proposal)
             inc.attempts.append(attempt)
 
