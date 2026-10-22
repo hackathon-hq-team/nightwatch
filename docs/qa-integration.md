@@ -1,5 +1,9 @@
 # Combined QA: verifier and demo scenarios
 
+For the current seven-scenario suite and independent candidate checks, see
+[complex-scenarios.md](complex-scenarios.md). The counts and PR context below describe
+the earlier integration checkpoint, not the expanded suite's current test count.
+
 This branch combines PR #3 (team verifier) and PR #4 (demo project and scenarios).
 The README conflict was resolved by keeping both setup links. Shared contracts, runtime model
 selection and pipeline outcome rules are unchanged.
