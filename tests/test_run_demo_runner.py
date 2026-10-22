@@ -82,3 +82,27 @@ def test_docker_not_ready_stops_before_any_run(monkeypatch, tmp_path, wired, cap
 def test_check_only_also_checks_docker(monkeypatch, tmp_path, wired):
     monkeypatch.setattr(run_demo, "docker_readiness", lambda: (False, "Docker Engine is unavailable"))
     assert run(monkeypatch, tmp_path, "--runner", "docker", "--check-only") == 2
+
+
+def test_web_search_without_key_stops(monkeypatch, tmp_path, wired, capsys):
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+    assert run(monkeypatch, tmp_path, "--web-search") == 2
+    assert wired == [] and "TAVILY_API_KEY is not set" in capsys.readouterr().out
+
+
+def test_web_searches_counted_in_summary(monkeypatch, tmp_path, wired):
+    from nightwatch.schemas import Event
+
+    def pipeline(client, runner, verifier, repo, history, settings):
+        def run_alert(alert):
+            inc = Incident(alert=alert, state=IncidentState.verified)
+            inc.events.append(Event(state=IncidentState.investigating, message='Web search (x): "q" — 2 results'))
+            return inc
+        return SimpleNamespace(run=run_alert)
+
+    monkeypatch.setattr(run_demo, "Pipeline", pipeline)
+    monkeypatch.setattr(run_demo, "Settings", lambda: Settings(api_key="x", history_dir=tmp_path / "h",
+                                                               tavily_api_key="tvly-x"))
+    assert run(monkeypatch, tmp_path, "--web-search") == 0
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text(encoding="utf-8"))
+    assert summary[0]["web_searches"] == 1

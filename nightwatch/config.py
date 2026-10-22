@@ -38,6 +38,10 @@ class Settings:
     # Small model for an optional first look (e.g. nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B); empty = off.
     triage_model: str = field(default_factory=lambda: os.getenv("NIGHTWATCH_TRIAGE_MODEL", ""))
 
+    # Web search for known library issues (Tavily). Off unless NIGHTWATCH_WEB_SEARCH=1 and a key is set.
+    tavily_api_key: str = field(default_factory=lambda: os.getenv("TAVILY_API_KEY", ""))
+    web_search: bool = field(default_factory=lambda: os.getenv("NIGHTWATCH_WEB_SEARCH", "") in ("1", "true", "yes"))
+
     history_dir: Path = field(default_factory=lambda: Path(os.getenv("NIGHTWATCH_HISTORY", "history")))
 
     # Limits
