@@ -3,7 +3,8 @@
 What it does:
 1. checks the API key and that the configured Nemotron model exists in Token Factory;
 2. creates a fresh demo repository with tools.prepare_demo (good + broken commit, alerts);
-3. runs the full pipeline on every scenario with the real model, LocalRunner and the
+3. runs the full pipeline on every scenario with the real model, the chosen runner
+   (LocalRunner by default, or Timur's Docker sandbox with --runner docker) and the
    team verifier (verifier.py) — falls back to ReferenceVerifier if it is not merged yet;
 4. compares the outcome with the expected one and prints a summary.
 
@@ -13,6 +14,7 @@ Usage (from the repository root):
     python scripts/run_demo.py                          # all scenarios
     python scripts/run_demo.py --scenario empty-sample  # one scenario
     python scripts/run_demo.py --check-only             # only check key and model id
+    python scripts/run_demo.py --runner docker          # run tests in the Docker sandbox
 """
 from __future__ import annotations
 
@@ -124,6 +126,19 @@ def check_model(client: ModelClient) -> bool:
     return True
 
 
+def docker_readiness() -> tuple[bool, str]:
+    """Docker Engine running and the runner image built (Timur's check from the UI)."""
+    from app.service import readiness
+    return readiness()
+
+
+def make_runner(kind: str, repo: Path):
+    if kind == "docker":
+        from nightwatch.docker_runner import Runner
+        return Runner(repo)
+    return LocalRunner(repo)
+
+
 def load_verifier():
     try:
         from verifier import Verifier  # Danik's module (PR #5)
@@ -145,7 +160,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--scenario", help="run only this scenario (file name in the alerts folder, without .json)")
     ap.add_argument("--output", type=Path, help="new directory for this run (default: .demo-runs/<time>)")
-    ap.add_argument("--check-only", action="store_true", help="only check the key and model id")
+    ap.add_argument("--check-only", action="store_true", help="only check the key, model id and runner")
+    ap.add_argument("--runner", choices=["local", "docker"], default="local",
+                    help="local: pytest in a temp copy (no isolation); docker: Timur's sandbox (needs the image)")
     args = ap.parse_args()
 
     output = (args.output or ROOT / ".demo-runs" / time.strftime("%Y%m%d-%H%M%S")).resolve()
@@ -162,15 +179,22 @@ def main() -> int:
         return 2
     if not check_model(client):
         return 2
+    if args.runner == "docker":
+        ready, message = docker_readiness()
+        if not ready:
+            print(f"FAIL  Docker runner: {message}")
+            return 2
+        print(f"OK    {message}")
     if args.check_only:
         return 0
 
     demo = prepare(output / "demo")
     repo = Path(demo["repo"])
     verifier, verifier_name = load_verifier()
-    print(f"\nDemo repository: {repo}\nVerifier: {verifier_name}\nModel calls: {settings.debug_dir}\n")
+    print(f"\nDemo repository: {repo}\nRunner: {args.runner}\nVerifier: {verifier_name}\n"
+          f"Model calls: {settings.debug_dir}\n")
 
-    pipeline = Pipeline(client, LocalRunner(repo), verifier, RepoView(repo), HistoryStore(output / "history"),
+    pipeline = Pipeline(client, make_runner(args.runner, repo), verifier, RepoView(repo), HistoryStore(output / "history"),
                         settings)
     alerts_dir = Path(demo["alerts"])
     available = discover(alerts_dir)
@@ -192,7 +216,7 @@ def main() -> int:
             ok, acceptance_reason = None, 'no expected outcome declared — add "expected" to the scenario file'
         else:
             ok, acceptance_reason = assess_result(name, inc, expected)
-        results.append({"scenario": name, "expected": expected.value if expected else None,
+        results.append({"scenario": name, "runner": args.runner, "expected": expected.value if expected else None,
                         "got": inc.state.value, "ok": ok,
                         "acceptance_reason": acceptance_reason,
                         "cost_usd": inc.usage.cost_usd, "tokens": inc.usage.tokens,
