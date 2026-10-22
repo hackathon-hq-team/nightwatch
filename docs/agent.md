@@ -38,6 +38,14 @@ read from an optional top-level `"expected": "verified" | "reported"` field in t
 expectation are shown as `N/A` and do not affect the exit code. Every `reported` expectation gets
 the strict refusal checks (no patch attempts, a completed investigation, facts and next steps).
 
+### Runner
+
+`--runner local` (default) runs pytest in a temporary copy on the host, without isolation.
+`--runner docker` uses Timur's sandbox (`nightwatch/docker_runner.py`, no network, no keys); it
+first checks that Docker is running and the `nightwatch-runner` image is built
+(see `docs/docker-runner.md`). Each row in `summary.json` records the runner. If a scenario passes
+with `local` but fails with `docker`, look at the runner or image before tuning prompts.
+
 ## Modules
 
 | File | What it does |
