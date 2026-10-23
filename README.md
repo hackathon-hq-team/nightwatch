@@ -19,10 +19,11 @@ Docker runner setup and isolation checks: [instructions for Timur](docs/docker-r
 Danik's verifier is implemented: [behaviour, validation and limitations](docs/verifier.md).
 Select it with the existing CLI option `--verifier team`.
 
-The demo project and two scenarios are ready for integration:
+The demo project now includes seven scenarios, including five harder bug scenarios:
 [setup instructions for Nikita and Timur](docs/demo-handoff.md).
 Prepare from the repository root: `python -m tools.prepare_demo --output .demo-workspace`.
-This is an initial mechanism check; live model calls and container integration require separate validation.
+See the [scenario contracts, independent acceptance checks and live-run handoff](docs/complex-scenarios.md).
+Offline cycles use scripted responses; live model quality, Tavily and container execution require separate validation.
 
 Combined verifier/demo validation and failure checks:
 [QA instructions](docs/qa-integration.md).

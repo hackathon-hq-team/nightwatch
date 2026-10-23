@@ -1,6 +1,7 @@
 import pytest
 
 from evaluation.oracle import AVERAGE_CASES, expected_average
+from evaluation.catalog import CASES
 from nightwatch.dev.local_runner import LocalRunner
 from verifier import Verifier
 from nightwatch.schemas import Alert, ReproTest
@@ -52,7 +53,7 @@ def test_real_failure_good_version_and_frozen_acceptance(prepared):
     files = {test.path: test.code}
     baseline = runner.run(alert.commit, {})
     assert baseline.status == "passed", baseline.output_tail
-    assert len(baseline.passed) == 4
+    assert len(baseline.passed) == 4 + sum(case["baseline_count"] for case in CASES)
     broken = runner.run(alert.commit, files, select=[test.path])
     good = runner.run(alert.previous_good_commit, files, select=[test.path])
     assert Verifier().check_reproduction(alert, test, broken, good).ok
@@ -70,7 +71,7 @@ def test_real_failure_good_version_and_frozen_acceptance(prepared):
     frozen = runner.tests_hash(alert.commit, files)
     after = runner.run(alert.commit, files, patch=patch)
     assert Verifier().check_patch(alert, test, after, frozen).ok, after.output_tail
-    assert len(after.passed) == 6
+    assert len(after.passed) == 6 + sum(case["baseline_count"] for case in CASES)
 
     # 'Always zero' fixes the empty case but must fail the non-empty answers.
     bad_source = (repo / "app/calc.py").read_text(encoding="utf-8").replace(
