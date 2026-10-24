@@ -6,6 +6,7 @@ A match is only a hint; a new fix still goes through reproduction and verificati
 from __future__ import annotations
 
 import re
+import time
 from pathlib import Path
 
 from .schemas import Alert, Incident, IncidentState
@@ -28,7 +29,16 @@ class HistoryStore:
     def save(self, incident: Incident) -> None:
         tmp = self.path(incident.id).with_suffix(".tmp")
         tmp.write_text(incident.model_dump_json(indent=2), encoding="utf-8")
-        tmp.replace(self.path(incident.id))  # atomic: the UI never reads half a file
+        # Atomic: the UI never reads half a file. On Windows a reader or antivirus can hold the target
+        # for a moment (WinError 5/32); retry those briefly instead of failing the incident.
+        for attempt in range(6):
+            try:
+                tmp.replace(self.path(incident.id))
+                return
+            except PermissionError as error:
+                if getattr(error, "winerror", None) not in (5, 32) or attempt == 5:
+                    raise
+                time.sleep(0.05 * (attempt + 1))
 
     def load(self, incident_id: str) -> Incident:
         return Incident.model_validate_json(self.path(incident_id).read_text(encoding="utf-8"))
