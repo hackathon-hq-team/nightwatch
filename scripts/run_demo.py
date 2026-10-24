@@ -16,6 +16,7 @@ Usage (from the repository root):
     python scripts/run_demo.py --check-only             # only check key and model id
     python scripts/run_demo.py --runner docker          # run tests in the Docker sandbox
     python scripts/run_demo.py --web-search             # allow Tavily search for library errors
+    python scripts/run_demo.py --suite advanced         # only the three harder scenarios
 """
 from __future__ import annotations
 
@@ -149,17 +150,19 @@ def load_verifier():
         return ReferenceVerifier(), "ReferenceVerifier (verifier.py not merged yet)"
 
 
-def prepare(output: Path) -> dict:
+def prepare(output: Path, suite: str = "standard") -> dict:
     try:
         from tools.prepare_demo import prepare as prepare_demo  # Danik's generator (PR #5)
     except ImportError:
         sys.exit("tools/prepare_demo.py not found — merge Danik's PR #5 first.")
-    return prepare_demo(output)
+    return prepare_demo(output, suite=suite)
 
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--scenario", help="run only this scenario (file name in the alerts folder, without .json)")
+    ap.add_argument("--suite", choices=["standard", "advanced"], default="standard",
+                    help="standard: existing seven scenarios; advanced: three harder opt-in scenarios")
     ap.add_argument("--output", type=Path, help="new directory for this run (default: .demo-runs/<time>)")
     ap.add_argument("--check-only", action="store_true", help="only check the key, model id and runner")
     ap.add_argument("--runner", choices=["local", "docker"], default="local",
@@ -198,7 +201,7 @@ def main() -> int:
     if args.check_only:
         return 0
 
-    demo = prepare(output / "demo")
+    demo = prepare(output / "demo", suite=args.suite)
     repo = Path(demo["repo"])
     verifier, verifier_name = load_verifier()
     print(f"\nDemo repository: {repo}\nRunner: {args.runner}\nVerifier: {verifier_name}\n"

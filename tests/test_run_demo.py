@@ -98,7 +98,7 @@ def wire_main(monkeypatch, tmp_path, refusal):
         clients.append(client)
         return client
 
-    def prepare(output):
+    def prepare(output, suite="standard"):
         alerts = output / "alerts"
         alerts.mkdir(parents=True)
         (alerts / "insufficient-evidence.json").write_text(refusal.alert.model_dump_json(), encoding="utf-8")

@@ -6,13 +6,13 @@ import json
 from pathlib import Path
 import re
 
-from evaluation.catalog import CASES
+from evaluation.catalog import ALL_CASES as CASES, SUITES, baseline_count
 from nightwatch.schemas import Alert, Incident, IncidentState, ReproTest
 from verifier import Verifier
 
 REPRO_PATH = "tests/nightwatch/test_acceptance_reproducer.py"
 ORACLE_PATH = "tests/nightwatch/test_acceptance_oracles.py"
-BASELINE_COUNT = 4 + sum(case["baseline_count"] for case in CASES)
+BASELINE_COUNT = 4 + sum(case["baseline_count"] for case in SUITES["standard"])
 
 
 def validate_patch_scope(patch: str, app_file: str) -> None:
@@ -96,7 +96,7 @@ def evaluate(case: dict, alert: Alert, patch: str, runner) -> dict:
         baseline = record("baseline", runner.run(alert.commit, {}, select=["tests"]))
         checks["baseline_green"] = bool(
             _green(baseline, alert.commit) and baseline.tests_hash == baseline_hash
-            and len(baseline.passed) == BASELINE_COUNT and baseline.patch_applied is None
+            and len(baseline.passed) == baseline_count(case) and baseline.patch_applied is None
         )
         if not checks["baseline_green"]:
             return stop("Broken-version baseline did not pass every expected original test")
@@ -109,7 +109,7 @@ def evaluate(case: dict, alert: Alert, patch: str, runner) -> dict:
             and broken.patch_applied is None and not broken.passed
             and len(broken.failures) == 1
         )
-        expected_count = BASELINE_COUNT + 1 + case["acceptance_count"]
+        expected_count = baseline_count(case) + 1 + case["acceptance_count"]
         checks["known_good_oracles_green"] = bool(
             _green(golden, alert.previous_good_commit) and golden.tests_hash == frozen_hash
             and golden.patch_applied is None and len(golden.passed) == expected_count

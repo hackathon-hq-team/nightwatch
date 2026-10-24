@@ -1,5 +1,22 @@
 # Integration decisions
 
+## NW-SCENARIOS-03: opt-in compound incidents with bounded input size
+
+Danik requested a harder scenario branch on 24 October 2026 after the existing suite
+passed in the team's live run. Add three compact compound incidents as `--suite advanced`.
+The default seven cases remain the `standard` suite, with their original baseline and
+discovery order. Advanced incidents are opt-in to avoid increasing the default paid run.
+
+- Reuse the existing Alert, Incident, edit reply, runner and verifier interfaces.
+  No shared schema, provider, model limits, prompt, UI or dependency changes are needed.
+- Extend only fixture preparation/selection and the existing independent acceptance tool.
+  `scripts/run_demo.py` forwards the optional suite to the fixture generator.
+- Keep reference repairs and expected answers external to runtime context. Validate
+  compound repairs against exact answers, state invariants and deliberately wrong patches.
+- Bound context size without promising identical live token usage. Compare total usage
+  including failed attempts under the same model configuration; a scripted pass is not
+  evidence of NVIDIA model ability. See `advanced-scenarios.md` for the live handoff.
+
 ## NW-SCENARIOS-02: harder scenarios for the next checkpoint
 
 Team request relayed by Danik on 23 October 2026: prepare 5–8 runnable scenarios in a

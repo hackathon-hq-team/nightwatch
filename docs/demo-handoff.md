@@ -3,6 +3,8 @@
 The source template contains the original calculator example plus five multi-condition
 bug scenarios. Preparation creates **seven** Alert-compatible JSON files. Detailed
 contracts and acceptance commands are in [complex-scenarios.md](complex-scenarios.md).
+The separate opt-in advanced suite is documented in [advanced-scenarios.md](advanced-scenarios.md).
+Select it with `--suite advanced`; the default still contains the same seven scenarios.
 All application code is a local educational fixture; it is not a deployed service.
 
 ## Local fixture checks

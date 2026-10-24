@@ -36,7 +36,7 @@ def wired(monkeypatch, tmp_path):
     monkeypatch.setattr(run_demo, "check_model", lambda client: True)
     monkeypatch.setattr(run_demo, "load_verifier", lambda: (None, "stub"))
 
-    def prepare(output):
+    def prepare(output, suite="standard"):
         alerts = output / "alerts"
         alerts.mkdir(parents=True)
         (alerts / "new-bug.json").write_text(json.dumps({**json.loads(ALERT.model_dump_json()),
@@ -63,6 +63,19 @@ def test_local_is_default_and_recorded(monkeypatch, tmp_path, wired):
     assert isinstance(wired[0], LocalRunner)
     summary = json.loads((tmp_path / "out" / "summary.json").read_text(encoding="utf-8"))
     assert summary[0]["runner"] == "local" and summary[0]["ok"] is True
+
+
+def test_advanced_suite_is_explicitly_forwarded(monkeypatch, tmp_path, wired):
+    original = run_demo.prepare
+    suites = []
+
+    def prepare(output, suite="standard"):
+        suites.append(suite)
+        return original(output, suite=suite)
+
+    monkeypatch.setattr(run_demo, "prepare", prepare)
+    assert run(monkeypatch, tmp_path, "--suite", "advanced") == 0
+    assert suites == ["advanced"]
 
 
 def test_docker_runner_used_when_ready(monkeypatch, tmp_path, wired):

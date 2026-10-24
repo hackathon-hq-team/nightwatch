@@ -5,7 +5,7 @@ import json
 import pytest
 
 from conftest import ScriptedLLM
-from evaluation.catalog import CASES, replace_once
+from evaluation.catalog import ADVANCED_CASES, CASES, replace_once
 from nightwatch.config import Settings
 from nightwatch.context import ContextBuilder, RepoView
 from nightwatch.dev.local_runner import LocalRunner
@@ -59,6 +59,7 @@ def test_all_seven_alerts_are_discovered_without_runtime_registration(prepared):
         assert all("evaluation/" not in item.source for item in evidence)
     assert not (repo / "evaluation").exists()
     assert not (repo / "tools").exists()
+    assert not any((repo / case["app_file"]).exists() for case in ADVANCED_CASES)
     assert not list(repo.rglob("*.pyc"))
     assert git(repo, "status", "--porcelain") == ""
     assert git(repo, "rev-parse", "HEAD") == manifest["broken_commit"]

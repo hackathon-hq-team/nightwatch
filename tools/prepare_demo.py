@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from evaluation.catalog import CASES, replace_once
+from evaluation.catalog import ALL_CASES, CASES, SUITES, replace_once
 
 ROOT = Path(__file__).resolve().parents[1]
 RETURN_LINE = "    return sum(items) / len(items)\n"
@@ -64,10 +64,10 @@ else:
     return json.loads(result.stdout)
 
 
-def prepare_complex(repo: Path, alerts: Path, base: str) -> dict:
+def prepare_complex(repo: Path, alerts: Path, base: str, cases=None) -> dict:
     """Keep reference repairs off the runtime commit's ancestry and prompt diff."""
     scenarios = {}
-    for case in CASES:
+    for case in CASES if cases is None else cases:
         slug, app_file = case["slug"], case["app_file"]
         git(repo, "checkout", "-qb", f"fixture/{slug}", base)
         app = repo / app_file
@@ -94,13 +94,32 @@ def prepare_complex(repo: Path, alerts: Path, base: str) -> dict:
     return scenarios
 
 
-def prepare(output: Path) -> dict:
+def prepare(output: Path, suite: str = "standard") -> dict:
+    if suite not in SUITES:
+        raise ValueError(f"Unknown scenario suite: {suite}")
+    cases = SUITES[suite]
     output = output.resolve()
     # Never overwrite a teammate's repository or an earlier run's evidence.
     output.mkdir(parents=True, exist_ok=False)
     repo = output / "repo"
-    shutil.copytree(ROOT / "demo-app", repo,
-                    ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"))
+    source = ROOT / "demo-app"
+    selected = {case["app_file"] for case in cases}
+    excluded = set()
+    for case in ALL_CASES:
+        if case["app_file"] not in selected:
+            excluded.update((case["app_file"], f"tests/test_{Path(case['app_file']).name}"))
+
+    def ignore(directory, names):
+        # Keep the default baseline and context unchanged when the optional suite grows.
+        relative = Path(directory).relative_to(source)
+        ignored = shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache")(directory, names)
+        return set(ignored) | {name for name in names if (relative / name).as_posix() in excluded}
+
+    shutil.copytree(source, repo, ignore=ignore)
+    if suite == "advanced":
+        write(repo / "README.md", "# Advanced Nightwatch demo fixture\n\n"
+              "This is trusted, intentionally broken scenario source. Reference repairs and\n"
+              "independent acceptance checks are kept outside this repository.\n")
     calc = repo / "app/calc.py"
     broken_source = calc.read_text(encoding="utf-8")
     if broken_source.count(RETURN_LINE) != 1:
@@ -152,10 +171,12 @@ else:
         # This is synthetic incident text, not a fabricated execution trace.
         "logs": "SYNTHETIC SCENARIO: report of memory pressure; no request, stack trace, load profile or dataset supplied.",
     }
-    for name, alert in [("empty-sample", empty), ("insufficient-evidence", insufficient)]:
+    # The opt-in advanced run contains only its three incidents, not extra paid smoke runs.
+    smoke_alerts = [("empty-sample", empty), ("insufficient-evidence", insufficient)]
+    for name, alert in smoke_alerts if suite == "standard" else []:
         write(alerts / f"{name}.json", json.dumps(alert, ensure_ascii=False, indent=2) + "\n")
-    scenarios = prepare_complex(repo, alerts, broken)
-    manifest = {"mode": "fixture", "repo": str(repo), "good_commit": good, "broken_commit": broken,
+    scenarios = prepare_complex(repo, alerts, broken, cases)
+    manifest = {"mode": "fixture", "suite": suite, "repo": str(repo), "good_commit": good, "broken_commit": broken,
                 "alerts": str(alerts), "scenarios": scenarios}
     write(output / "manifest.json", json.dumps(manifest, indent=2) + "\n")
     return manifest
@@ -164,8 +185,10 @@ else:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True, help="New directory; must not already exist")
+    parser.add_argument("--suite", choices=tuple(SUITES), default="standard",
+                        help="Opt in to advanced scenarios; the default seven remain unchanged")
     args = parser.parse_args()
-    print(json.dumps(prepare(args.output), indent=2))
+    print(json.dumps(prepare(args.output, suite=args.suite), indent=2))
 
 
 if __name__ == "__main__":

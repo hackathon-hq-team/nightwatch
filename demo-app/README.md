@@ -13,6 +13,13 @@ Additional modules expose these contracts in their public function docstrings:
 - `reservations.reservation_peaks`: timezone-aware, half-open bookings with weighted capacity.
 - `plugin_binding.select_plugin_release`: registry aliases and PEP 440-compatible release selection.
 
+The source template also holds three opt-in advanced modules: `refunds.refund_ledger`,
+`event_projection.project_entities`, and `dependency_resolver.resolve_dependencies`.
+Use `python -m tools.prepare_demo --suite advanced --output .qa-results/advanced-workspace`
+to select them. Preparation copies only the selected suite's modules and tests plus
+the calculator baseline; the default suite remains unchanged. Full contracts and
+acceptance instructions are in the main repository's `docs/advanced-scenarios.md`.
+
 Original tests cover ordinary paths and pass before the reported regressions are investigated.
 The plugin module uses the real packaging dependency already required by pytest.
 

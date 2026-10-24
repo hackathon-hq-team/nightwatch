@@ -25,6 +25,11 @@ Prepare from the repository root: `python -m tools.prepare_demo --output .demo-w
 See the [scenario contracts, independent acceptance checks and live-run handoff](docs/complex-scenarios.md).
 Offline cycles use scripted responses; live model quality, Tavily and container execution require separate validation.
 
+Three additional compound scenarios are available as the opt-in `advanced` suite:
+[contracts, offline checks and token-budget comparison](docs/advanced-scenarios.md).
+Use `python -m tools.prepare_demo --suite advanced --output .qa-results/advanced-workspace`
+for offline preparation. The default seven-scenario run remains unchanged.
+
 Combined verifier/demo validation and failure checks:
 [QA instructions](docs/qa-integration.md).
 
