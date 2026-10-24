@@ -20,6 +20,9 @@ and acceptance runs never enter the model's evidence, history or memory.
 
 ## Receive Sentry alerts
 
+For a repeatable Windows startup and the tunnel-address update procedure, see
+[Local Sentry demo](local-sentry-demo.md).
+
 Set these server-side values in `.env` (never send keys in chat or browser widgets):
 
 ```dotenv
@@ -139,6 +142,8 @@ deployment remain separate tasks before remote hosting.
 - A subsequent live `inventory-replay` run with Nemotron Super completed as
   `verified` and passed independent acceptance (saved local incident `inc-476f21f4`,
   three real model calls). Its raw history and credentials are not committed.
-- Delivery from a real Sentry account and actual publication of a generated fix
-  to GitHub still require the corresponding target configuration and remain
-  unvalidated externally.
+- The automated tests do not cover a real Sentry account or GitHub publication.
+  Subsequent local Demo Shop validation received a signed live Sentry alert,
+  verified the InvoiceError patch and published it as a Draft PR; after review
+  and merge, the restarted application returned HTTP 200 and 1700 cents.
+  See [local startup validation](local-sentry-demo.md) for the tunnel recovery check.
