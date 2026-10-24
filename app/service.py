@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
+import json
+import os
 from pathlib import Path
 import subprocess
 import threading
-import time
 import uuid
 
 from nightwatch.config import Settings
@@ -20,10 +21,20 @@ from tools.prepare_demo import prepare
 from verifier import Verifier
 
 from app.demo_model import DemoModel
+from app.storage import BusyError, JobStore
 
 SCENARIOS = {
     "empty-sample": "Empty sample · reproducible code error",
     "insufficient-evidence": "Memory pressure · insufficient evidence",
+}
+from evaluation.catalog import CASES
+SCENARIOS.update({case["slug"]: case["title"] for case in CASES})
+
+SCENARIO_DESCRIPTIONS = {
+    "empty-sample": "A missing empty-input guard causes division by zero.",
+    "insufficient-evidence": "Missing input and workload evidence should end in a report.",
+    **{case["slug"]: f"Application: {case['app_file']} · independent acceptance checks after verification."
+       for case in CASES},
 }
 
 
@@ -50,6 +61,7 @@ class Job:
     running: bool = True
     incident: Incident | None = None
     error: str = ""
+    metadata: dict = field(default_factory=dict)
 
 
 class ObservableHistory(HistoryStore):
@@ -58,16 +70,7 @@ class ObservableHistory(HistoryStore):
         self.notify = notify
 
     def save(self, incident):
-        # A history reader or antivirus may briefly hold the destination on Windows.
-        # Keep atomic replacement and retry only these transient sharing errors.
-        for attempt in range(5):
-            try:
-                super().save(incident)
-                break
-            except PermissionError as error:
-                if getattr(error, "winerror", None) not in (5, 32) or attempt == 4:
-                    raise
-                time.sleep(0.02 * (attempt + 1))
+        super().save(incident)
         self.notify(incident)
 
 
@@ -86,13 +89,67 @@ class ConsoleService:
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="nightwatch-ui")
         self._lock = threading.Lock()
         self._job = None
+        self.store = JobStore(self.root / ".ui-runs" / "state")
 
     def snapshot(self) -> Job | None:
+        row = self.store.latest()
         with self._lock:
-            if self._job is None:
-                return None
-            return replace(self._job, incident=self._job.incident.model_copy(deep=True)
-                           if self._job.incident is not None else None)
+            if self._job is not None and row and row["id"] == self._job.id:
+                return replace(self._job, incident=self._job.incident.model_copy(deep=True)
+                               if self._job.incident is not None else None, metadata=dict(row["metadata"]))
+        if row is None:
+            return None
+        incident = None
+        if row["incident"]:
+            history = self.demo_history if row["mode"] == "demo" else self.live_history
+            try:
+                incident = HistoryStore(history).load(row["incident"])
+            except (OSError, ValueError):
+                pass
+        return Job(row["id"], row["mode"], row["scenario"], row["state"] == "running",
+                   incident, row["error"], row["metadata"])
+
+    def metadata(self, incident_id):
+        row = self.store.for_incident(incident_id)
+        return row["metadata"] if row else {}
+
+    def publish(self, incident_id):
+        import re
+        from app.github_pr import publish, validate_incident
+        if not re.fullmatch(r"inc-[0-9a-f]{8}", incident_id):
+            raise ValueError("Invalid incident identifier")
+        row = self.store.for_incident(incident_id)
+        if row is None or row["mode"] != "live" or row["state"] != "finished":
+            raise ValueError("Wait for this live investigation to complete before publishing.")
+        metadata = row["metadata"]
+        incident = HistoryStore(self.live_history).load(incident_id)
+        validate_incident(incident, metadata)
+        previous = self.store.publication(incident_id)
+        if previous and previous["state"] == "created":
+            return previous["result"]
+        self.store.claim_publication(incident_id)
+        try:
+            result = publish(incident, metadata)
+            self.store.finish_publication(incident_id, result)
+            return result
+        except Exception as error:
+            self.store.finish_publication(incident_id, error=type(error).__name__)
+            raise
+
+    def _submit(self, mode, scenario, metadata, delivery=None):
+        row, duplicate = self.store.create(uuid.uuid4().hex, mode, scenario, metadata, delivery)
+        if not duplicate:
+            job = Job(row["id"], mode, scenario, metadata=metadata)
+            with self._lock:
+                self._job = job
+            try:
+                self._executor.submit(self._run, job)
+            except Exception:
+                self.store.update(job.id, state="failed", error="Worker could not be started")
+                with self._lock:
+                    job.running = False
+                raise
+        return row["id"], duplicate
 
     def records(self) -> list[tuple[str, Incident]]:
         records = [("demo", inc) for inc in HistoryStore(self.demo_history).all()]
@@ -104,38 +161,69 @@ class ConsoleService:
             raise ValueError("Unknown run mode or scenario")
         if mode == "live" and not self.settings.api_key:
             raise ValueError("Set NEBIUS_API_KEY in .env and restart the console.")
-        with self._lock:
-            if self._job is not None and self._job.running:
-                raise ValueError("An investigation is already running.")
-            job = Job(uuid.uuid4().hex, mode, scenario)
-            self._job = job
-        self._executor.submit(self._run, job)
-        return job.id
+        return self._submit(mode, scenario, {"kind": "fixture", "scenario": scenario})[0]
+
+    def submit_alert(self, alert: Alert, repo: Path, delivery: str):
+        if not self.settings.api_key:
+            raise ValueError("Live model API key is not configured")
+        return self._submit("live", "sentry", {
+            "kind": "repository", "repository": str(Path(repo).resolve()),
+            "github_repo": os.getenv("NIGHTWATCH_GITHUB_REPO", ""),
+            "base_branch": os.getenv("NIGHTWATCH_GITHUB_BASE", "main"),
+            "alert": alert.model_dump(mode="json"),
+        }, delivery)
 
     def _run(self, job: Job):
         def notify(incident):
+            self.store.update(job.id, incident=incident.id)
             with self._lock:
                 job.incident = incident.model_copy(deep=True)
         try:
-            output = self.root / ".ui-runs" / job.id
-            manifest = prepare(output)
-            repo = Path(manifest["repo"])
-            alert = Alert.model_validate_json((Path(manifest["alerts"]) / f"{job.scenario}.json").read_text("utf-8"))
+            case = next((case for case in CASES if case["slug"] == job.scenario), None)
+            if job.metadata["kind"] == "fixture":
+                output = self.root / ".ui-runs" / job.id
+                manifest = prepare(output)
+                repo = Path(manifest["repo"])
+                alert = Alert.model_validate_json((Path(manifest["alerts"]) / f"{job.scenario}.json").read_text("utf-8"))
+                job.metadata["workspace"] = str(output)
+            else:
+                repo = Path(job.metadata["repository"])
+                alert = Alert.model_validate(job.metadata["alert"])
+            self.store.update(job.id, metadata=job.metadata)
             settings = replace(self.settings, history_dir=self.live_history)
             if job.mode == "demo":
                 settings = replace(settings, triage_model="", escalation_model="")
-                llm = DemoModel()
+                source = RepoView(repo).show(alert.commit, case["app_file"]) if case else None
+                llm = DemoModel(case, source)
             else:
                 llm = ModelClient(settings)
             history = ObservableHistory(self.demo_history if job.mode == "demo" else self.live_history, notify)
             incident = Pipeline(llm, Runner(repo), Verifier(), RepoView(repo), history, settings).run(alert)
             notify(incident)
+            if case and incident.final_patch and incident.state.value == "verified":
+                # Private answers are used only after the runtime model has finished.
+                # They never become Incident evidence or memory/model context.
+                from tools.check_scenario_patch import evaluate, load_inputs
+                job.metadata["acceptance"] = {"status": "running", "ok": False,
+                                               "reason": "Running independent acceptance checks"}
+                self.store.update(job.id, metadata=job.metadata)
+                trusted_case, trusted_alert, patch, acceptance_repo = load_inputs(output, job.scenario,
+                                                                                 history.path(incident.id))
+                acceptance = evaluate(trusted_case, trusted_alert, patch, Runner(acceptance_repo))
+                acceptance["runner"] = "docker"
+                (output / "acceptance.json").write_text(json.dumps(acceptance, indent=2), encoding="utf-8")
+                job.metadata["acceptance"] = acceptance
+                self.store.update(job.id, metadata=job.metadata)
         except Exception as error:
             message = f"{type(error).__name__}: {error}"
             if self.settings.api_key:
                 message = message.replace(self.settings.api_key, "[redacted]")
             with self._lock:
                 job.error = message[:1000]
+            if job.metadata.get("acceptance", {}).get("status") == "running":
+                job.metadata["acceptance"] = {"status": "error", "ok": False, "reason": message[:1000]}
+                self.store.update(job.id, metadata=job.metadata)
         finally:
+            self.store.update(job.id, state="failed" if job.error else "finished", error=job.error)
             with self._lock:
                 job.running = False

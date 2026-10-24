@@ -16,6 +16,8 @@ Agent design (context, prompts, patch edits, escalation, Tavily, memory): [docs/
 
 Streamlit operator console: [UI setup and demo modes](docs/ui.md).
 
+Complex-scenario acceptance, signed Sentry alerts and Draft PRs: [integration setup](docs/integrations.md).
+
 Docker runner setup and isolation checks: [instructions for Timur](docs/docker-runner.md).
 
 Danik's verifier is implemented: [behaviour, validation and limitations](docs/verifier.md).

@@ -84,6 +84,7 @@ class Runner:
         self.image = image or os.getenv("NIGHTWATCH_RUNNER_IMAGE", DEFAULT_IMAGE)
         self.memory = memory
         self.cpus = cpus
+        self.last_files: dict[str, bytes] | None = None
 
     @staticmethod
     def _command(args: list[str], *, data: bytes | None = None, timeout: float = 30):
@@ -120,6 +121,7 @@ class Runner:
     def run(self, commit: str, test_files: dict[str, str], patch: str | None = None,
             select: list[str] | None = None) -> RunResult:
         started = time.monotonic()
+        self.last_files = None
         name = "nightwatch-" + uuid.uuid4().hex
         created = False
         applied = None
@@ -176,6 +178,8 @@ class Runner:
                 "archive.add('/workspace',arcname='.'); archive.close()",
             ])))
             status = {0: "passed", 1: "failed"}.get(executed.returncode, "error")
+            if status == "passed":
+                self.last_files = after
             return result(status, executed.returncode, passed=report["passed"],
                           failures=[TestFailure(**f) for f in report["failures"]], tests_hash=tests_digest(after),
                           output_tail=(executed.stdout + executed.stderr).decode("utf-8", "replace")[-3000:])

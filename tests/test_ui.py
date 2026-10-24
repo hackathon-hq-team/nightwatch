@@ -31,17 +31,16 @@ def test_running_job_cannot_be_submitted_twice(tmp_path, monkeypatch):
 
 
 def test_observable_history_retries_windows_sharing_error(tmp_path, monkeypatch):
-    from nightwatch.history import HistoryStore
-    original = HistoryStore.save
+    original = Path.replace
     attempts = []
-    def save(self, incident):
-        attempts.append(incident.id)
+    def replace(self, target):
+        attempts.append(str(target))
         if len(attempts) == 1:
             error = PermissionError("Sharing violation")
             error.winerror = 32
             raise error
-        original(self, incident)
-    monkeypatch.setattr(HistoryStore, "save", save)
+        return original(self, target)
+    monkeypatch.setattr(Path, "replace", replace)
     notified = []
     store = ObservableHistory(tmp_path, notified.append)
     incident = Incident(alert=Alert(title="test", exception_type="Error", commit="abc"))
@@ -103,6 +102,46 @@ def test_saved_outcomes_render_and_export(app_test, state):
     assert app.metric[0].value == state.value.capitalize()
     assert any(tab.label == "Evidence" for tab in app.tabs)
     assert any(tab.label == "Tests & cost" for tab in app.tabs)
+
+
+def test_independent_failure_is_distinct_from_pipeline_verification(app_test):
+    app, console = app_test
+    incident = Incident(alert=Alert(title="Complex case", exception_type="Error", commit="a" * 40),
+                        state=IncidentState.verified,
+                        final_patch=PatchProposal(diff="patch", explanation="Prepared candidate"))
+    from nightwatch.history import HistoryStore
+    HistoryStore(console.demo_history).save(incident)
+    job, _ = console.store.create("acceptance-ui", "demo", "snapshot-pagination", {
+        "kind": "fixture", "acceptance": {"ok": False, "status": "rejected", "reason": "Missing expected node",
+                                            "checks": {"exact_test_set": False}, "runs": {}}})
+    console.store.update(job["id"], incident=incident.id, state="finished")
+    app.run()
+    assert not app.exception
+    assert any("Independent acceptance did not pass" in item.value for item in app.error)
+    assert app.metric[0].value == "Verified"
+
+
+def test_real_incident_publication_requires_explicit_click(app_test, monkeypatch):
+    app, console = app_test
+    from nightwatch.history import HistoryStore
+    incident = Incident(alert=Alert(title="Real error", exception_type="Error", commit="a" * 40),
+                        state=IncidentState.verified,
+                        final_patch=PatchProposal(diff="patch", explanation="Prepared candidate"))
+    HistoryStore(console.live_history).save(incident)
+    job, _ = console.store.create("publish-ui", "live", "sentry", {
+        "kind": "repository", "github_repo": "owner/application"})
+    console.store.update(job["id"], incident=incident.id, state="finished")
+    calls = []
+    def publish(identifier):
+        calls.append(identifier)
+        return {"url": "https://github.com/owner/application/pull/1"}
+    monkeypatch.setattr(console, "publish", publish)
+    app.run()
+    assert not app.exception and not calls
+    assert next(button for button in app.button if button.label == "Create Draft PR").disabled
+    next(item for item in app.checkbox if "Publish this patch" in item.label).set_value(True).run()
+    next(button for button in app.button if button.label == "Create Draft PR").click().run()
+    assert not app.exception and calls == [incident.id]
 
 
 @pytest.mark.skipif(__import__("os").getenv("NIGHTWATCH_TEST_DOCKER") != "1", reason="Requires runner image and Docker")

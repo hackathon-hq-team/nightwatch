@@ -18,6 +18,8 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["ruff"]
 ui = ["streamlit>=1.66,<2"]
+webhook = ["fastapi>=0.115,<1", "uvicorn>=0.30,<1"]
+test-integrations = ["httpx>=0.27,<1"]
 
 [tool.setuptools.packages.find]
 include = ["nightwatch*"]

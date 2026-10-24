@@ -1,5 +1,6 @@
 """Run from the repository root: python -m streamlit run app/streamlit_app.py."""
 from pathlib import Path
+import json
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -8,7 +9,7 @@ if str(ROOT) not in sys.path:
 
 import streamlit as st
 
-from app.service import ConsoleService, SCENARIOS, readiness
+from app.service import ConsoleService, SCENARIOS, SCENARIO_DESCRIPTIONS, readiness
 from nightwatch.docker_runner import DEFAULT_IMAGE
 import os
 
@@ -38,6 +39,10 @@ def clean(text):
     return str(text).replace(key, "[redacted]") if key else str(text)
 
 
+def json_text(value):
+    return clean(json.dumps(value, indent=2))
+
+
 def checks(verdict):
     if verdict:
         st.text(clean(verdict.reason))
@@ -57,6 +62,7 @@ def run_details(label, result):
 
 
 def incident_view(incident, mode, running):
+    metadata = console.metadata(incident.id)
     status = incident.state.value
     st.caption(f"{incident.id} / {incident.created_at:%d %b %Y · %H:%M UTC}")
     st.subheader(incident.alert.title)
@@ -80,6 +86,23 @@ def incident_view(incident, mode, running):
     else:
         st.warning("This saved investigation is incomplete. It is not running in this console process.")
 
+    acceptance = metadata.get("acceptance")
+    if acceptance:
+        if acceptance.get("ok"):
+            st.success("Independent acceptance passed · exact expected test set confirmed in Docker.")
+        elif acceptance.get("status") == "running":
+            st.info("Checking independent acceptance. Pipeline verification is not the final scenario result.")
+        else:
+            st.error("Independent acceptance did not pass: " + clean(acceptance.get("reason", "Incomplete evidence")))
+        with st.expander("Independent acceptance details"):
+            st.dataframe([{"Check": key, "Passed": value} for key, value in acceptance.get("checks", {}).items()],
+                         hide_index=True, width="stretch")
+            for name, result in acceptance.get("runs", {}).items():
+                from nightwatch.schemas import RunResult
+                run_details(name, RunResult.model_validate(result))
+            st.download_button("Download acceptance report", json_text(acceptance),
+                               f"{incident.id}-acceptance.json", "application/json", key=f"acceptance-{incident.id}")
+
     overview, evidence, execution = st.tabs(["Investigation", "Evidence", "Tests & cost"])
     with overview:
         main, timeline = st.columns([1.65, 1], gap="large")
@@ -90,6 +113,29 @@ def incident_view(incident, mode, running):
                 st.code(incident.final_patch.diff, language="diff")
                 st.download_button("Download patch", incident.final_patch.diff, f"{incident.id}.patch", "text/plain",
                                    key=f"patch-{incident.id}")
+                if metadata.get("kind") == "repository":
+                    st.caption("GitHub target: " + metadata.get("github_repo", "Not configured"))
+                    published = console.store.publication(incident.id)
+                    if published and published["state"] == "created":
+                        st.link_button("View pull request", published["result"]["url"])
+                    else:
+                        publishing = bool(published and published["state"] == "publishing")
+                        if publishing:
+                            st.info("This incident is being published. The pull request link will appear here.")
+                        elif published and published["state"] == "failed":
+                            st.caption("The previous publication failed. You can retry after resolving the error.")
+                        confirmed = st.checkbox("Publish this patch and reproduction test to the configured GitHub repository.",
+                                                key=f"publish-confirm-{incident.id}", disabled=running or publishing)
+                        if st.button("Create Draft PR", key=f"publish-{incident.id}",
+                                     disabled=running or publishing or not confirmed):
+                            try:
+                                with st.spinner("Rechecking tests and creating a Draft PR…"):
+                                    created = console.publish(incident.id)
+                                st.link_button("View Draft PR", created["url"])
+                            except Exception as error:
+                                st.error(clean(str(error)))
+                else:
+                    st.caption("Simulated alerts can be downloaded; GitHub publication requires a real repository alert.")
             if incident.report:
                 st.markdown("### Diagnostic report")
                 for fact in incident.report.facts:
@@ -171,8 +217,7 @@ with st.sidebar:
     mode_label = st.radio("Model mode", ["Scripted demo", "Live Nemotron"], disabled=busy)
     mode = "demo" if mode_label == "Scripted demo" else "live"
     scenario = st.selectbox("Scenario", list(SCENARIOS), format_func=SCENARIOS.get, disabled=busy)
-    st.caption("A missing empty-input guard causes division by zero." if scenario == "empty-sample"
-               else "An alert lacks the input and workload needed for reliable reproduction.")
+    st.caption(SCENARIO_DESCRIPTIONS[scenario])
     if st.button("Refresh services", disabled=busy):
         sandbox_status.clear()
     ready, reason = sandbox_status(os.getenv("NIGHTWATCH_RUNNER_IMAGE", DEFAULT_IMAGE))
