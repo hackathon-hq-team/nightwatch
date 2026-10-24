@@ -126,12 +126,16 @@ deployment remain separate tasks before remote hosting.
   GitHub API. They checked draft-only creation, tested-file content, stable retry
   identity, moved-base refusal, acceptance failure, test-hash failure and missing
   original tests. No actual GitHub branch or pull request was created.
-- Final full regression after the shared Windows history retry fix:
-  `NIGHTWATCH_TEST_DOCKER=1 python -m pytest -q` — **187 passed in 261.52s**.
-  Report: `.qa-results/all-integrations-verified.xml`. Additional targeted checks
-  cover credential-header redaction and the last publication guard.
+- Full regression after integrating main through `11d275e`, with external API keys
+  disabled and `NIGHTWATCH_TEST_DOCKER=1`: `python -m pytest -q` —
+  **232 passed in 287.75s**. Report: `.qa-results/pr-final-green.xml`.
+  The upstream EOF-patch fixture now writes UTF-8/LF explicitly so its plain
+  `git apply` check remains valid on Windows.
 - Browser check: `snapshot-pagination` reached `verified` and displayed a separate
   successful independent acceptance result with downloadable details.
-- No Nebius API key, Sentry signing secret or target application is configured on
-  this host. Live provider calls, delivery from a real Sentry account and actual
-  GitHub publication require those settings and remain unvalidated externally.
+- A subsequent live `inventory-replay` run with Nemotron Super completed as
+  `verified` and passed independent acceptance (saved local incident `inc-476f21f4`,
+  three real model calls). Its raw history and credentials are not committed.
+- Delivery from a real Sentry account and actual publication of a generated fix
+  to GitHub still require the corresponding target configuration and remain
+  unvalidated externally.

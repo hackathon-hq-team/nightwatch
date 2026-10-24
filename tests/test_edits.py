@@ -81,8 +81,8 @@ def test_no_newline_at_end_of_file(tmp_path):
     src = "a = 1\nb = 2"
     diff = edits_to_diff([Edit(file="m.py", old="b = 2", new="b = 3")], lambda p: src)
     assert "\\ No newline at end of file" in diff
-    (tmp_path / "m.py").write_text(src)
-    (tmp_path / "p.patch").write_text(diff)
+    (tmp_path / "m.py").write_text(src, encoding="utf-8", newline="\n")
+    (tmp_path / "p.patch").write_text(diff, encoding="utf-8", newline="\n")
     subprocess.run(["git", "apply", "p.patch"], cwd=tmp_path, check=True)
     assert (tmp_path / "m.py").read_text() == "a = 1\nb = 3"
 
