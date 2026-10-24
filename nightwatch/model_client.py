@@ -22,6 +22,7 @@ from .config import Settings
 from .schemas import ModelCall, Usage
 
 T = TypeVar("T", bound=BaseModel)
+MAX_TOKENS_CAP = 16384  # upper bound when a cut-off reply is retried with more room
 
 
 class BudgetExceeded(RuntimeError):
@@ -183,11 +184,21 @@ class ModelClient:
             started = time.time()
             resp = self._chat(messages, max_tokens, model)
             self._record(step if attempt == 0 else f"{step}:retry", resp, started, usage, model)
-            text = resp.choices[0].message.content or ""
+            choice = resp.choices[0]
+            text = choice.message.content or ""
             self._dump(step, attempt, messages, text, usage)
             try:
                 return schema.model_validate(extract_json(text))
             except (ValueError, ValidationError) as e:
+                if getattr(choice, "finish_reason", None) == "length":
+                    # Reasoning used up the budget before the JSON: retry with more room, not with the
+                    # cut-off text (it only makes the prompt longer).
+                    last_error = f"reply cut off at max_tokens={max_tokens} before the JSON was complete"
+                    max_tokens = min(max_tokens * 2, MAX_TOKENS_CAP)
+                    messages = messages[:2] + [{"role": "user", "content":
+                        "Your previous reply was cut off before the JSON object. Think briefly and reply with "
+                        "the JSON object only."}]
+                    continue
                 last_error = str(e)[:1500]
                 messages += [
                     {"role": "assistant", "content": text[:4000]},
