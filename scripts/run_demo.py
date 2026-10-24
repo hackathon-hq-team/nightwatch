@@ -15,6 +15,7 @@ Usage (from the repository root):
     python scripts/run_demo.py --scenario empty-sample  # one scenario
     python scripts/run_demo.py --check-only             # only check key and model id
     python scripts/run_demo.py --runner docker          # run tests in the Docker sandbox
+    python scripts/run_demo.py --web-search             # allow Tavily search for library errors
 """
 from __future__ import annotations
 
@@ -163,6 +164,8 @@ def main() -> int:
     ap.add_argument("--check-only", action="store_true", help="only check the key, model id and runner")
     ap.add_argument("--runner", choices=["local", "docker"], default="local",
                     help="local: pytest in a temp copy (no isolation); docker: Timur's sandbox (needs the image)")
+    ap.add_argument("--web-search", action="store_true",
+                    help="search known library issues with Tavily (needs TAVILY_API_KEY); same as NIGHTWATCH_WEB_SEARCH=1")
     args = ap.parse_args()
 
     output = (args.output or ROOT / ".demo-runs" / time.strftime("%Y%m%d-%H%M%S")).resolve()
@@ -185,6 +188,13 @@ def main() -> int:
             print(f"FAIL  Docker runner: {message}")
             return 2
         print(f"OK    {message}")
+    if args.web_search:
+        settings.web_search = True
+    if settings.web_search:
+        if not settings.tavily_api_key:
+            print("FAIL  web search is on but TAVILY_API_KEY is not set (see .env.example)")
+            return 2
+        print("OK    web search with Tavily (only for errors inside libraries or dependency changes)")
     if args.check_only:
         return 0
 
@@ -221,6 +231,7 @@ def main() -> int:
                         "acceptance_reason": acceptance_reason,
                         "cost_usd": inc.usage.cost_usd, "tokens": inc.usage.tokens,
                         "model_calls": len(inc.usage.calls), "patch_attempts": len(inc.attempts),
+                        "web_searches": sum(e.message.startswith("Web search (") for e in inc.events),
                         "models": sorted({c.model for c in inc.usage.calls}),
                         "seconds": round(time.time() - started, 1), "incident": inc.id})
         if inc.final_patch:

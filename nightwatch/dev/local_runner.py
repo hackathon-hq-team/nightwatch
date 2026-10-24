@@ -99,7 +99,8 @@ class LocalRunner:
             report = root / ".nightwatch-report.json"
             env = {**os.environ, "NIGHTWATCH_REPORT": str(report),
                    "PYTHONPATH": os.pathsep.join([str(root), PLUGIN_ROOT]), "PYTHONDONTWRITEBYTECODE": "1"}
-            env.pop("NEBIUS_API_KEY", None)  # tests must not see keys
+            for key in ("NEBIUS_API_KEY", "TAVILY_API_KEY"):
+                env.pop(key, None)  # tests must not see keys
             cmd = [self.python, "-m", "pytest", "-q", "-p", "nightwatch.pytest_plugin", "-p", "no:cacheprovider",
                    *(select or [])]
             try:

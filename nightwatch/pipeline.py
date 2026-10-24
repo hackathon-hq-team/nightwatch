@@ -16,12 +16,13 @@ import logging
 import re
 import traceback
 
-from . import prompts
+from . import prompts, web_search
 from .config import Settings
 from .context import ContextBuilder, RepoView, render
+from .edits import EditError, PatchReply, to_proposal
 from .contracts import Runner, Verifier
 from .history import HistoryStore
-from .model_client import LLM, BudgetExceeded
+from .model_client import LLM, BudgetExceeded, ModelError
 from .schemas import (
     Alert,
     Attempt,
@@ -30,11 +31,11 @@ from .schemas import (
     Incident,
     IncidentState,
     Investigation,
-    PatchProposal,
     RunResult,
     Triage,
     Verdict,
 )
+from .web_search import WebSearch
 
 log = logging.getLogger("nightwatch.pipeline")
 REPORT_FALLBACK_PREFIX = "Diagnostic report unavailable:"
@@ -73,14 +74,16 @@ def _tail(run: RunResult | None, n: int = 3000) -> str:
 
 class Pipeline:
     def __init__(self, llm: LLM, runner: Runner, verifier: Verifier, repo: RepoView,
-                 history: HistoryStore, settings: Settings | None = None):
+                 history: HistoryStore, settings: Settings | None = None, web: WebSearch | None = None):
         self.llm = llm
         self.runner = runner
         self.verifier = verifier
         self.repo = repo
         self.history = history
         self.s = settings or Settings()
-        self.context = ContextBuilder(repo, history, self.s.context_token_budget)
+        if web is None:
+            web = web_search.from_settings(self.s)
+        self.context = ContextBuilder(repo, history, self.s.context_token_budget, web)
 
     # ------------------------------------------------------------------ public
 
@@ -137,6 +140,8 @@ class Pipeline:
     def _investigate_and_reproduce(self, inc: Incident) -> None:
         inc.move(IncidentState.investigating, "Collecting context")
         inc.evidence, inc.similar_incidents = self.context.build(inc.alert, exclude_incident=inc.id)
+        for note in self.context.notes:
+            self._note(inc, note)
         if inc.similar_incidents:
             self._note(inc, f"Similar past incidents: {', '.join(inc.similar_incidents)}")
         self._save(inc)
@@ -145,8 +150,12 @@ class Pipeline:
         user += self._triage(inc, user)
         for n in range(1, self.s.max_repro_attempts + 1):
             model = self._escalate(inc, n, "investigation") if n > 1 else None
-            inv = self.llm.complete_json("investigate", prompts.INVESTIGATE_SYSTEM, user, Investigation, inc.usage,
-                                         model=model)
+            try:
+                inv = self.llm.complete_json("investigate", prompts.INVESTIGATE_SYSTEM, user, Investigation,
+                                             inc.usage, max_tokens=8192, model=model)
+            except ModelError as e:  # an unusable reply is a failed attempt, not a Nightwatch failure
+                self._note(inc, f"Investigation attempt {n}: unusable model reply ({e})")
+                continue
             inc.investigation = inv
             if inv.repro_test is None:
                 self._report(inc, f"Model considers the failure not reproducible: {inv.not_reproducible_reason}")
@@ -170,8 +179,8 @@ class Pipeline:
             inc.rejected_hypotheses.append(inv.hypotheses[0].summary)
             user += "\n\n" + prompts.INVESTIGATE_RETRY.format(reason=verdict.reason, output=_tail(inc.repro_broken))
 
-        self._report(inc, f"Failure not reproduced in {self.s.max_repro_attempts} attempts: "
-                          f"{inc.repro_verdict.reason}")
+        last = inc.repro_verdict.reason if inc.repro_verdict else "no usable model reply"
+        self._report(inc, f"Failure not reproduced in {self.s.max_repro_attempts} attempts: {last}")
 
     def _patch(self, inc: Incident) -> None:
         inv = inc.investigation
@@ -189,7 +198,25 @@ class Pipeline:
                 test_code=test.code, files=self._files_for_patch(inc), previous=previous)
             system = prompts.PATCH_SYSTEM.format(max_lines=self.s.max_diff_lines)
             model = self._escalate(inc, n, "patch") if n > self.s.escalate_after_failures else None
-            proposal = self.llm.complete_json("patch", system, user, PatchProposal, inc.usage, model=model)
+            try:
+                reply = self.llm.complete_json("patch", system, user, PatchReply, inc.usage,
+                                               max_tokens=8192, model=model)
+            except ModelError as e:  # counts as a rejected attempt; the next one may escalate
+                inc.attempts.append(Attempt(n=n, error=str(e)[:500],
+                                            verdict=Verdict(ok=False, reason=f"unusable model reply: {e}"[:300])))
+                self._note(inc, f"Patch attempt {n}: unusable model reply")
+                self._save(inc)
+                continue
+            try:
+                proposal = to_proposal(reply, lambda path: self.repo.show(inc.alert.commit, path))
+            except EditError as e:  # edits that do not match the file: rejected before the runner
+                reason = f"edits could not be applied: {e}"
+                inc.attempts.append(Attempt(n=n, error=str(e)[:500],
+                                            verdict=Verdict(ok=False, reason=reason[:300], checks={"edits_apply": False})))
+                self._note(inc, f"Patch attempt {n}: {reason[:150]}")
+                self._save(inc)
+                previous = prompts.PATCH_PREVIOUS.format(n=n, reason=reason, diff="(no diff)", output="")
+                continue
             attempt = Attempt(n=n, patch=proposal)
             inc.attempts.append(attempt)
 
@@ -219,7 +246,7 @@ class Pipeline:
                 user += "\n\n## Hypotheses so far\n" + "\n".join(self._fmt_hyp(h) for h in inc.investigation.hypotheses)
             if inc.repro_verdict:
                 user += f"\n\n## Reproduction verdict\n{inc.repro_verdict.reason}\n{_tail(inc.repro_broken, 1500)}"
-            report = self.llm.complete_json("report", prompts.REPORT_SYSTEM, user, DiagnosticReport, inc.usage, 2048)
+            report = self.llm.complete_json("report", prompts.REPORT_SYSTEM, user, DiagnosticReport, inc.usage, 4096)
         except Exception as e:
             log.warning("report via model failed: %s", e)
             # Keep the useful fallback report, but expose the failed report call to acceptance checks.
