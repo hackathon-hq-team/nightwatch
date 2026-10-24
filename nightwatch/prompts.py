@@ -14,7 +14,12 @@ Your job:
      No network, no real external services, no sleeps.
    - The test must FAIL on the broken version by raising the SAME exception as the alert
      (do not catch it, do not wrap it in pytest.raises). It should PASS once the bug is fixed.
-   - Assert the correct behaviour, not the buggy one.
+   - Assert the correct behaviour, not the buggy one. Do NOT hand-compute exact expected outputs
+     (full lists, rounded amounts, orderings): a wrong expectation makes the correct fix fail.
+     Assert only what the evidence establishes — the alert's exception is not raised, plus
+     properties stated in the code, docstrings or existing tests (e.g. "allocations do not exceed
+     the net amount", "no record is lost"). Copy exact values only from existing tests or docs.
+   - The test must agree with the existing tests: never expect behaviour they contradict.
    - In "expected" give the exception type and a stable part of its message (no ids/dates),
      plus the file and function where it is raised.
 3. If the failure clearly depends on load, network, timing or infrastructure and cannot be
