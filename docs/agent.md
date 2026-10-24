@@ -79,6 +79,23 @@ first checks that Docker is running and the `nightwatch-runner` image is built
 (see `docs/docker-runner.md`). Each row in `summary.json` records the runner. If a scenario passes
 with `local` but fails with `docker`, look at the runner or image before tuning prompts.
 
+## Measuring memory and triage with `run_demo.py`
+
+Each run starts with an empty history unless `--history <folder>` is given. To measure memory on
+repeated incidents, run twice with the same folder and compare the two `summary.json` files:
+
+```powershell
+python scripts/run_demo.py --history .demo-memory --output .demo-runs/memory-1   # cold: memory_hits = 0
+python scripts/run_demo.py --history .demo-memory --output .demo-runs/memory-2   # warm: memory_hits > 0
+```
+
+`memory_hits` counts similar past incidents passed to the model; compare `cost_usd`, `tokens`,
+`patch_attempts` and `seconds` between the runs. A remembered fix is only a hint: it is
+reproduced and verified again.
+
+`--triage` adds the Nano first look (`--triage <model>` for another model); `summary.json` records
+its category per scenario. Compare a run with and without it before turning it on by default.
+
 ## Modules
 
 | File | What it does |

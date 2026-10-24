@@ -164,3 +164,28 @@ def test_web_searches_counted_in_summary(monkeypatch, tmp_path, wired):
     assert run(monkeypatch, tmp_path, "--web-search") == 0
     summary = json.loads((tmp_path / "out" / "summary.json").read_text(encoding="utf-8"))
     assert summary[0]["web_searches"] == 1
+
+
+def test_history_folder_is_shared_and_memory_counted(monkeypatch, tmp_path, wired):
+    roots = []
+
+    def pipeline(client, runner, verifier, repo, history, settings):
+        roots.append(history.root)
+
+        def run_alert(alert):
+            return Incident(alert=alert, state=IncidentState.verified, similar_incidents=["inc-old"])
+        return SimpleNamespace(run=run_alert)
+
+    monkeypatch.setattr(run_demo, "Pipeline", pipeline)
+    shared = tmp_path / "memory"
+    assert run(monkeypatch, tmp_path, "--history", str(shared)) == 0
+    assert roots == [shared.resolve()]
+    summary = json.loads((tmp_path / "out" / "summary.json").read_text(encoding="utf-8"))
+    assert summary[0]["memory_hits"] == 1 and summary[0]["triage"] is None
+
+
+def test_triage_flag_sets_nano(monkeypatch, tmp_path, wired):
+    seen = []
+    monkeypatch.setattr(run_demo, "check_model", lambda client: seen.append(client.s.triage_model) or True)
+    assert run(monkeypatch, tmp_path, "--triage") == 0
+    assert seen == [run_demo.TRIAGE_MODEL]

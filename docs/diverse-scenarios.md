@@ -1,7 +1,7 @@
 # Seventeen varied checkpoint scenarios
 
 NW-SCENARIOS-04 implements Nikita's revised request: cover different failure modes,
-not increasingly elaborate algorithms. This branch is based on `main` at `11d275e`.
+not increasingly elaborate algorithms. The initial fixture baseline was `main` at `11d275e`.
 It is independent of the three advanced scenarios in draft PR #18; those are not
 included in these counts. Use `--suite diverse` for 17 cases; the default `standard`
 suite remains the existing seven. All runtime outcomes and provider limits stay unchanged.
@@ -118,6 +118,11 @@ python -m scripts.run_demo --suite diverse --runner docker --memory-pair --outpu
 python -m tools.memory_pair_report --run .demo-runs/memory-pair-01
 ```
 
+For this comparison, omit `--history`: the report reads the pair's records from
+`<output>/history` and requires the first incident to have no earlier matching memory.
+The separate shared-history option remains available for other experiments. The
+`--triage` option from main can also be used; its calls remain part of recorded usage.
+
 Running the repeat alone is rejected before a provider call. The pair still performs
 reproduction and patch verification twice. It does not reuse a successful outcome or
 skip tests. The comparison must include all calls, retries, reporting, tokens, cost and
@@ -138,7 +143,7 @@ is an incomplete experiment, not evidence that a repeat became cheaper.
 ## Validation recorded on 24 October 2026
 
 - Python 3.11.9 on Windows, pytest 9.1.1 and the pinned HTTP fixture requirements.
-- Full suite: **245 passed, 12 skipped, one failed**. All **54 newly added checks**
+- Initial full suite: **245 passed, 12 skipped, one failed**. All **54 newly added checks**
   passed, covering discovery, real failures, reference repairs, ten incorrect repairs,
   independent acceptance, refusals, repeat history, CLI selection and usage reporting.
 - The remaining failure is the existing
@@ -150,6 +155,10 @@ is an incomplete experiment, not evidence that a repeat became cheaper.
 - The documented preparation command completed and produced 17 valid alerts:
   13 expected verified results and four expected reports. This validates fixture
   generation, not 17 live model successes. Local scripted execution used no provider API.
+- Integration with `main` at `89dd7b7`: **256 passed, 12 skipped, one failed** using
+  `python -m pytest -q --tb=short --junitxml=.qa-results/diverse-merge-main.xml`.
+  The only failure remains the same Windows patch test above. Both the diverse-suite
+  options and main's shared-history/triage options are preserved.
 
 ## Ownership and stop point
 

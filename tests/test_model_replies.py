@@ -85,3 +85,61 @@ def test_no_usable_investigation_ends_in_report(demo_repo, alert, tmp_path):
     assert inc.state == IncidentState.reported and not inc.error
     assert any("no usable model reply" in e.message for e in inc.events)
 
+
+
+class Unavailable(Exception):
+    status_code = 503
+
+
+def test_transient_provider_error_is_retried(tmp_path, monkeypatch):
+    """24 Oct live run: Token Factory answered 503 once and the scenario ended as a Nightwatch error."""
+    import nightwatch.model_client as mc
+
+    sleeps = []
+    monkeypatch.setattr(mc.time, "sleep", sleeps.append)
+    c = client(tmp_path, [('{"diff": "d", "explanation": "e"}', "stop")])
+    real = c._client.chat.completions.create
+    failures = [Unavailable("503 Service Temporarily Unavailable")] * 2
+
+    def flaky(**kw):
+        if failures:
+            raise failures.pop()
+        return real(**kw)
+
+    c._client.chat.completions.create = flaky
+    assert c.complete_json("patch", "s", "u", PatchProposal, Usage()).diff == "d"
+    assert sleeps == [5, 15]
+
+
+def test_permanent_error_is_not_retried(tmp_path, monkeypatch):
+    import nightwatch.model_client as mc
+
+    class BadRequest(Exception):
+        status_code = 400
+
+    monkeypatch.setattr(mc.time, "sleep", lambda s: pytest.fail("must not wait"))
+    c = client(tmp_path, [])
+
+    def bad(**kw):
+        raise BadRequest("invalid model")
+
+    c._client.chat.completions.create = bad
+    with pytest.raises(BadRequest):
+        c.complete_json("patch", "s", "u", PatchProposal, Usage())
+
+
+def test_retries_give_up_after_the_last_delay(tmp_path, monkeypatch):
+    import nightwatch.model_client as mc
+
+    monkeypatch.setattr(mc.time, "sleep", lambda s: None)
+    c = client(tmp_path, [])
+    calls = []
+
+    def down(**kw):
+        calls.append(1)
+        raise Unavailable("503")
+
+    c._client.chat.completions.create = down
+    with pytest.raises(Unavailable):
+        c.complete_json("patch", "s", "u", PatchProposal, Usage())
+    assert len(calls) == 4  # first try + 3 retries

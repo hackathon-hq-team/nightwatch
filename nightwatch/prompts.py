@@ -76,7 +76,8 @@ Rules:
   character from the file content below (no line numbers), with enough lines (usually 3 or
   more) to occur only once in the file; "new" is the replacement text. Do NOT write a diff:
   Nightwatch builds it from your edits. Use several small edits rather than rewriting a file.
-- Add needed imports with a separate edit next to the existing imports.
+- Add needed imports with a separate edit next to the existing imports, and remove code your
+  change makes unused (variables, imports) in the same edits.
 - NEVER modify anything under tests/. The tests are the fixed acceptance criteria.
 - Fix the root cause; do not special-case the test input, do not swallow exceptions.
 - Keep the change under {max_lines} changed lines.
