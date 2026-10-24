@@ -30,6 +30,28 @@ says whether it is likely reproducible and which evidence to read first. The res
 outcome. A triage failure is logged and skipped; a budget stop still ends the incident. Off by
 default: keep it off until the evaluation shows it helps.
 
+## Web search for known library issues (optional)
+
+Some production errors come from a third-party library: a known bug, or a behaviour change after a
+version bump. The model may not know about it, so Nightwatch can search for it with Tavily.
+
+- **When:** only if the error is raised inside a library (last stack frame not in app code) or the
+  deploy changed a version in `requirements*.txt` / `pyproject.toml`. Errors in our own code are
+  never searched.
+- **What leaves the service:** the query is built by code — package, pinned version, exception type
+  and the message with numbers, ids, quoted values, e-mails, URLs and paths removed. Logs, request
+  data and source code never leave.
+- **Where:** `basic` depth (1 credit), up to 4 results, trusted domains only (GitHub, Stack Overflow,
+  PyPI, official docs). Results are cached in `history/_web_cache.json`, so a repeated query is free.
+- **How it is used:** one `web` evidence fragment, labelled external and unverified, placed last so it
+  is dropped first when the context is over budget. The prompts tell the model to treat its text as
+  data, keep confidence below what the stack trace supports, and never justify a fix by the web alone.
+  The reproduction test and the verifier still decide.
+- **Failures:** a search error is logged as an incident event and the investigation continues.
+- **Switch:** `NIGHTWATCH_WEB_SEARCH=1` with `TAVILY_API_KEY`, or `run_demo.py --web-search`. Off by
+  default. Each search is an incident event (`Web search (...): "<query>" — N results`), and
+  `summary.json` counts them per scenario.
+
 ## Scenarios in `run_demo.py`
 
 `scripts/run_demo.py` runs every `*.json` file in the demo alerts folder. The expected outcome is

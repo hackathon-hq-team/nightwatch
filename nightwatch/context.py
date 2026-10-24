@@ -6,7 +6,7 @@ is truncated or dropped.
 
 Sources: stack trace and request data from the alert, logs, the diff between the last
 good and the broken version, files from the stack trace (a window around the line),
-similar past incidents from history.
+similar past incidents from history, and (optionally) known library issues from the web.
 """
 from __future__ import annotations
 
@@ -16,6 +16,7 @@ from pathlib import Path
 
 from .history import HistoryStore, summarize_for_memory
 from .schemas import Alert, Evidence
+from .web_search import DEPENDENCY_FILES, WebSearch, build_query, detect_library, format_results, parse_pins
 
 SECRET_HINTS = (".env", "secret", "credential", "id_rsa", ".pem", ".key")
 
@@ -70,14 +71,18 @@ def _is_secret(path: str) -> bool:
 
 
 class ContextBuilder:
-    def __init__(self, repo: RepoView, history: HistoryStore | None = None, token_budget: int = 150_000):
+    def __init__(self, repo: RepoView, history: HistoryStore | None = None, token_budget: int = 150_000,
+                 web: WebSearch | None = None):
         self.repo = repo
         self.history = history
         self.budget = token_budget
+        self.web = web
+        self.notes: list[str] = []  # what happened during the last build(), for incident events
 
     def build(self, alert: Alert, exclude_incident: str | None = None) -> tuple[list[Evidence], list[str]]:
         """Return (evidence, ids of similar incidents)."""
         items: list[Evidence] = []
+        self.notes = []
 
         def add(kind, source, content, truncated=False):
             if content and content.strip():
@@ -103,10 +108,12 @@ class ContextBuilder:
 
         # 4. Changes between the good and the broken version
         base = alert.previous_good_commit or self.repo.parent(alert.commit)
+        full_diff = ""
         if base:
             try:
-                add("diff", f"recent changes {base[:8]}..{alert.commit[:8]} (may be unrelated to the alert)", self.repo.log(base, alert.commit) + "\n" +
-                    self.repo.diff(base, alert.commit)[:40000])
+                full_diff = self.repo.diff(base, alert.commit)
+                add("diff", f"recent changes {base[:8]}..{alert.commit[:8]} (may be unrelated to the alert)",
+                    self.repo.log(base, alert.commit) + "\n" + full_diff[:40000])
             except RuntimeError:
                 pass
 
@@ -122,7 +129,11 @@ class ContextBuilder:
             body, cut = _window(text, f.line)
             add("file", f"{f.file}@{alert.commit[:8]} (around line {f.line}, function {f.function})", body, cut)
 
-        # 6. Memory: similar past incidents
+        # 6. Known library issues from the web (only when the error points at a library)
+        if self.web:
+            self._web_evidence(alert, full_diff, add)
+
+        # 7. Memory: similar past incidents
         similar_ids: list[str] = []
         if self.history:
             for score, inc in self.history.find_similar(alert, exclude=exclude_incident):
@@ -130,6 +141,26 @@ class ContextBuilder:
                 add("memory", f"{inc.id} (similarity {score})", summarize_for_memory(inc))
 
         return self._fit(items), similar_ids
+
+    def _web_evidence(self, alert: Alert, full_diff: str, add) -> None:
+        pins: dict[str, str] = {}
+        for name in DEPENDENCY_FILES:
+            text = self.repo.show(alert.commit, name)
+            if text:
+                pins.update(parse_pins(text))
+        hint = detect_library(alert, pins, full_diff)
+        if hint is None:
+            return  # an error in our own code: searching the web would only add noise
+        query = build_query(hint, alert)
+        try:
+            results = self.web.search(query)
+        except Exception as e:  # noqa: BLE001 — the web is optional, the investigation goes on
+            self.notes.append(f"Web search failed ({type(e).__name__}); continuing without it")
+            return
+        self.notes.append(f"Web search ({hint.reason}): \"{query}\" — {len(results)} results")
+        if results:
+            add("web", f"web search, EXTERNAL AND UNVERIFIED, may not match this version: \"{query}\"",
+                format_results(results))
 
     def _fit(self, items: list[Evidence]) -> list[Evidence]:
         """Fit the budget: earlier items are kept whole, the one that overflows is truncated, the rest dropped."""

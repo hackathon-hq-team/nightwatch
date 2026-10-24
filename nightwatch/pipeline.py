@@ -16,7 +16,7 @@ import logging
 import re
 import traceback
 
-from . import prompts
+from . import prompts, web_search
 from .config import Settings
 from .context import ContextBuilder, RepoView, render
 from .contracts import Runner, Verifier
@@ -35,6 +35,7 @@ from .schemas import (
     Triage,
     Verdict,
 )
+from .web_search import WebSearch
 
 log = logging.getLogger("nightwatch.pipeline")
 REPORT_FALLBACK_PREFIX = "Diagnostic report unavailable:"
@@ -73,14 +74,16 @@ def _tail(run: RunResult | None, n: int = 3000) -> str:
 
 class Pipeline:
     def __init__(self, llm: LLM, runner: Runner, verifier: Verifier, repo: RepoView,
-                 history: HistoryStore, settings: Settings | None = None):
+                 history: HistoryStore, settings: Settings | None = None, web: WebSearch | None = None):
         self.llm = llm
         self.runner = runner
         self.verifier = verifier
         self.repo = repo
         self.history = history
         self.s = settings or Settings()
-        self.context = ContextBuilder(repo, history, self.s.context_token_budget)
+        if web is None:
+            web = web_search.from_settings(self.s)
+        self.context = ContextBuilder(repo, history, self.s.context_token_budget, web)
 
     # ------------------------------------------------------------------ public
 
@@ -137,6 +140,8 @@ class Pipeline:
     def _investigate_and_reproduce(self, inc: Incident) -> None:
         inc.move(IncidentState.investigating, "Collecting context")
         inc.evidence, inc.similar_incidents = self.context.build(inc.alert, exclude_incident=inc.id)
+        for note in self.context.notes:
+            self._note(inc, note)
         if inc.similar_incidents:
             self._note(inc, f"Similar past incidents: {', '.join(inc.similar_incidents)}")
         self._save(inc)
