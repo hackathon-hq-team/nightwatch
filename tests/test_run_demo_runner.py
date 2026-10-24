@@ -36,7 +36,7 @@ def wired(monkeypatch, tmp_path):
     monkeypatch.setattr(run_demo, "check_model", lambda client: True)
     monkeypatch.setattr(run_demo, "load_verifier", lambda: (None, "stub"))
 
-    def prepare(output):
+    def prepare(output, suite="standard"):
         alerts = output / "alerts"
         alerts.mkdir(parents=True)
         (alerts / "new-bug.json").write_text(json.dumps({**json.loads(ALERT.model_dump_json()),
@@ -63,6 +63,64 @@ def test_local_is_default_and_recorded(monkeypatch, tmp_path, wired):
     assert isinstance(wired[0], LocalRunner)
     summary = json.loads((tmp_path / "out" / "summary.json").read_text(encoding="utf-8"))
     assert summary[0]["runner"] == "local" and summary[0]["ok"] is True
+
+
+def test_diverse_suite_is_forwarded_without_changing_model_settings(monkeypatch, tmp_path, wired):
+    from tools import prepare_demo
+
+    monkeypatch.setattr(prepare_demo, "require_diverse_dependencies", lambda: None)
+    original = run_demo.prepare
+    selected = []
+
+    def prepare(output, suite="standard"):
+        selected.append(suite)
+        return original(output, suite=suite)
+
+    monkeypatch.setattr(run_demo, "prepare", prepare)
+    assert run(monkeypatch, tmp_path, "--suite", "diverse") == 0
+    assert selected == ["diverse"]
+
+
+def test_memory_pair_runs_in_order_with_shared_history(monkeypatch, tmp_path, wired):
+    from tools import prepare_demo
+    from evaluation.diverse_catalog import REPEAT_OF, REPEAT_SLUG
+
+    monkeypatch.setattr(prepare_demo, "require_diverse_dependencies", lambda: None)
+    calls, stores = [], []
+
+    def prepare(output, suite="standard"):
+        assert suite == "diverse"
+        alerts = output / "alerts"
+        alerts.mkdir(parents=True)
+        for name in (REPEAT_SLUG, REPEAT_OF):
+            data = {**json.loads(ALERT.model_dump_json()), "title": name, "expected": "verified"}
+            (alerts / f"{name}.json").write_text(json.dumps(data))
+        return {"repo": str(output / "repo"), "alerts": str(alerts)}
+
+    def pipeline(client, runner, verifier, repo, history, settings):
+        stores.append(history)
+
+        def run_alert(alert):
+            calls.append(alert.title)
+            return Incident(alert=alert, state=IncidentState.verified)
+
+        return SimpleNamespace(run=run_alert)
+
+    monkeypatch.setattr(run_demo, "prepare", prepare)
+    monkeypatch.setattr(run_demo, "Pipeline", pipeline)
+    assert run(monkeypatch, tmp_path, "--suite", "diverse", "--memory-pair") == 0
+    assert calls == [REPEAT_OF, REPEAT_SLUG] and len(stores) == 1
+
+
+def test_repeat_alone_is_rejected_before_any_provider_call(monkeypatch, tmp_path):
+    from tools import prepare_demo
+    from evaluation.diverse_catalog import REPEAT_SLUG
+
+    monkeypatch.setattr(prepare_demo, "require_diverse_dependencies", lambda: None)
+    monkeypatch.setattr(run_demo, "ModelClient", lambda *args: pytest.fail("Provider must not be called"))
+    with pytest.raises(SystemExit) as error:
+        run(monkeypatch, tmp_path, "--suite", "diverse", "--scenario", REPEAT_SLUG)
+    assert error.value.code == 2
 
 
 def test_docker_runner_used_when_ready(monkeypatch, tmp_path, wired):

@@ -188,3 +188,19 @@ def test_triage_budget_stop_ends_in_report(demo_repo, alert, tmp_path):
     inc = pipe.run(alert)
     assert inc.state == IncidentState.reported
     assert any(e.message.startswith("Stopped by budget") for e in inc.events)
+
+
+def test_failed_reproduction_does_not_reject_a_hypothesis_the_model_keeps(demo_repo, alert, tmp_path):
+    """24 Oct live run: the first test was rejected, the second confirmed the same cause."""
+    passing = {**INVESTIGATION, "repro_test": {**INVESTIGATION["repro_test"], "code": "def test_ok():\n    assert True\n"}}
+    pipe, _ = make(demo_repo, tmp_path, {"investigate": [passing, INVESTIGATION], "patch": [PATCH]})
+    inc = pipe.run(alert)
+    assert inc.state == IncidentState.verified and inc.rejected_hypotheses == []
+
+
+def test_hypothesis_the_model_abandons_is_recorded(demo_repo, alert, tmp_path):
+    first = {**INVESTIGATION, "hypotheses": [{"summary": "cache returns stale data", "confidence": 0.4}],
+             "repro_test": {**INVESTIGATION["repro_test"], "code": "def test_ok():\n    assert True\n"}}
+    pipe, _ = make(demo_repo, tmp_path, {"investigate": [first, INVESTIGATION], "patch": [PATCH]})
+    inc = pipe.run(alert)
+    assert inc.rejected_hypotheses == ["cache returns stale data"]

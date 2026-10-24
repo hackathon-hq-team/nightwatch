@@ -148,6 +148,7 @@ class Pipeline:
 
         user = f"## Alert\n{inc.alert.title}\n\n## Evidence\n{render(inc.evidence)}"
         user += self._triage(inc, user)
+        unconfirmed = ""  # top hypothesis of a rejected reproduction test: the test failed, not the idea
         for n in range(1, self.s.max_repro_attempts + 1):
             model = self._escalate(inc, n, "investigation") if n > 1 else None
             try:
@@ -157,6 +158,10 @@ class Pipeline:
                 self._note(inc, f"Investigation attempt {n}: unusable model reply ({e})")
                 continue
             inc.investigation = inv
+            top = inv.hypotheses[0].summary
+            if unconfirmed and unconfirmed.strip().lower() != top.strip().lower():
+                inc.rejected_hypotheses.append(unconfirmed)  # the model itself moved to another cause
+            unconfirmed = ""
             if inv.repro_test is None:
                 self._report(inc, f"Model considers the failure not reproducible: {inv.not_reproducible_reason}")
                 return
@@ -176,7 +181,7 @@ class Pipeline:
             if verdict.ok:
                 self._note(inc, f"Failure reproduced: {verdict.reason}")
                 return  # stay in `reproducing` → patching follows
-            inc.rejected_hypotheses.append(inv.hypotheses[0].summary)
+            unconfirmed = top
             user += "\n\n" + prompts.INVESTIGATE_RETRY.format(reason=verdict.reason, output=_tail(inc.repro_broken))
 
         last = inc.repro_verdict.reason if inc.repro_verdict else "no usable model reply"
