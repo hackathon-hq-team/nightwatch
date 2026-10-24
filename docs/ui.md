@@ -10,11 +10,12 @@ docker build -t nightwatch-runner:dev -f docker/runner/Dockerfile .
 
 Open http://localhost:8501. The committed Streamlit configuration binds to loopback
 and disables usage telemetry. The console has no authentication; remote hosting
-and webhook integration require a separate deployment/access-control step.
+requires a separate deployment/access-control step. The local Sentry receiver is
+described in [integrations.md](integrations.md).
 
 ## Run an incident
 
-Select one of two scenarios and click **Run investigation**. Scripted demo is the
+Select one of seven scenarios and click **Run investigation**. Scripted demo is the
 default: prepared model responses, real Git snapshots, Docker execution and the team
 verifier. It needs no API key and incurs no API cost. It demonstrates the mechanism,
 not model quality. The calculator template intentionally contains the bug.
@@ -25,11 +26,12 @@ the actual model pipeline on the selected generated demo repository. No API requ
 is made just by opening the console or choosing live mode. Existing incident/daily
 budgets apply; they are not atomic hard spending caps across separate processes.
 
-Both modes require the local runner image, execute through Docker only and permit
-one job at a time in this UI process. Reruns and browser polling never resubmit jobs.
+Both modes require the local runner image and execute through Docker only. The UI
+and Sentry receiver share an atomic single-investigation slot in the job registry.
+Reruns and browser polling never resubmit jobs.
 The worker continues if the browser disconnects while the server stays alive.
 There is no job resume after a server restart; unfinished saved incidents are labelled
-incomplete. A separate CLI/server process is outside the UI's single-job guard.
+incomplete. A separate CLI process is outside the console/receiver job guard.
 
 ## Inspect results
 
@@ -39,7 +41,9 @@ incomplete. A separate CLI/server process is outside the UI's single-job guard.
   token counts and estimated cost using the configured price table.
 - Downloads: verified patch, reproduction test and complete incident JSON.
 
-No GitHub PR is created from this screen yet. A verified patch is not a deployment.
+Real repository incidents received by the Sentry receiver can create a Draft PR
+after explicit publication and a fresh Docker recheck. Simulated incidents retain
+downloads only. A verified patch is not a deployment. See [integration setup](integrations.md).
 
 ## Data
 

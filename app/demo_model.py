@@ -6,8 +6,27 @@ from nightwatch.schemas import ModelCall
 
 
 class DemoModel:
+    def __init__(self, case=None, source=None):
+        # Only the explicit scripted mode receives prepared evaluation data.
+        self.case = case
+        self.source = source
+
     def complete_json(self, step, system, user, schema, usage, max_tokens=4096, model=None):
-        if step == "investigate" and "MemoryError" in user:
+        if self.case and step in ("investigate", "patch"):
+            if step == "investigate":
+                reply = {"hypotheses": [{"summary": "Prepared fixture diagnosis; not a live model result.",
+                                         "confidence": 0.9, "evidence_ids": ["E1"]}],
+                         "repro_test": {"path": "tests/nightwatch/test_scenario.py", "code": self.case["reproducer"],
+                                        "expected": {"exception_type": self.case["exception_type"]}}}
+            else:
+                import difflib
+                from evaluation.catalog import replace_once
+                fixed = replace_once(self.source, self.case["good_replacements"])
+                path = self.case["app_file"]
+                reply = {"diff": "".join(difflib.unified_diff(self.source.splitlines(True), fixed.splitlines(True),
+                                                             fromfile="a/" + path, tofile="b/" + path)),
+                         "explanation": "Prepared fixture repair; not a live model result.", "evidence_ids": ["E1"]}
+        elif step == "investigate" and "MemoryError" in user:
             reply = {
                 "hypotheses": [{"summary": "Memory pressure may depend on production traffic or input size.",
                                 "confidence": 0.2, "evidence_ids": ["E1"],
