@@ -124,3 +124,41 @@ def test_edit_touching_tests_is_rejected(demo_repo, alert, tmp_path):
     inc = pipe.run(alert)
     assert inc.state == IncidentState.reported
     assert all(a.run is None and not a.verdict.ok for a in inc.attempts)
+
+
+SETTLEMENT = (
+    "def allocate(weights, units, denominator):\n"
+    "    shares = {}\n"
+    "    for account, weight in weights.items():\n"
+    "        numerator = units * weight\n"
+    "        quotient, remainder = divmod(numerator, denominator)\n"
+    "        shares[account] = round(numerator / denominator)\n"
+    "    return shares\n"
+)
+
+
+def test_constant_indent_shift_is_tolerated_and_new_is_reindented(tmp_path):
+    """24 Oct live run: the model shifted the whole snippet by 2 spaces (10 instead of 8)."""
+    old = ("      for account, weight in weights.items():\n"
+           "          numerator = units * weight\n"
+           "          quotient, remainder = divmod(numerator, denominator)\n"
+           "          shares[account] = round(numerator / denominator)\n")
+    new = ("      for account, weight in weights.items():\n"
+           "          numerator = units * weight\n"
+           "          quotient, remainder = divmod(numerator, denominator)\n"
+           "          shares[account] = quotient\n")
+    diff = edits_to_diff([Edit(file="s.py", old=old, new=new)], lambda p: SETTLEMENT)
+    after = apply_with_git(tmp_path, "s.py", SETTLEMENT, diff)
+    assert after == SETTLEMENT.replace("round(numerator / denominator)", "quotient")
+
+
+def test_inconsistent_indent_is_not_guessed():
+    old = "  for account, weight in weights.items():\n    numerator = units * weight\n"
+    with pytest.raises(EditError, match="not found"):
+        edits_to_diff([Edit(file="s.py", old=old, new="x")], lambda p: SETTLEMENT)
+
+
+def test_line_match_keeps_line_structure(tmp_path):
+    src = "a = 1\nb = 2   \nc = 3\n"
+    diff = edits_to_diff([Edit(file="m.py", old="b = 2\n", new="b = 20\n")], lambda p: src)
+    assert apply_with_git(tmp_path, "m.py", src, diff) == "a = 1\nb = 20\nc = 3\n"
