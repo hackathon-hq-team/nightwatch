@@ -12,6 +12,8 @@ Briefly describe the problem and target users (1–2 sentences).
 
 ## ▶️ Getting started
 
+Agent design (context, prompts, patch edits, escalation, Tavily, memory): [docs/agent.md](docs/agent.md).
+
 Streamlit operator console: [UI setup and demo modes](docs/ui.md).
 
 Docker runner setup and isolation checks: [instructions for Timur](docs/docker-runner.md).
