@@ -16,6 +16,8 @@ Usage (from the repository root):
     python scripts/run_demo.py --check-only             # only check key and model id
     python scripts/run_demo.py --runner docker          # run tests in the Docker sandbox
     python scripts/run_demo.py --web-search             # allow Tavily search for library errors
+    python scripts/run_demo.py --history .demo-memory   # keep incidents across runs (memory)
+    python scripts/run_demo.py --triage                 # Nano triage before the investigation
 """
 from __future__ import annotations
 
@@ -36,6 +38,8 @@ from nightwatch.history import HistoryStore  # noqa: E402
 from nightwatch.model_client import ModelClient, ModelError  # noqa: E402
 from nightwatch.pipeline import Pipeline, REPORT_FALLBACK_PREFIX  # noqa: E402
 from nightwatch.schemas import Alert, Incident, IncidentState  # noqa: E402
+
+TRIAGE_MODEL = "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"
 
 # Scenario name → the outcome a correct agent must reach. A scenario file can also declare it
 # itself with a top-level "expected": "verified" | "reported" field (ignored by the Alert model).
@@ -166,6 +170,11 @@ def main() -> int:
                     help="local: pytest in a temp copy (no isolation); docker: Timur's sandbox (needs the image)")
     ap.add_argument("--web-search", action="store_true",
                     help="search known library issues with Tavily (needs TAVILY_API_KEY); same as NIGHTWATCH_WEB_SEARCH=1")
+    ap.add_argument("--history", type=Path,
+                    help="incident history to read and extend (default: a fresh one per run). Run twice with the "
+                         "same folder to measure memory on repeated incidents")
+    ap.add_argument("--triage", nargs="?", const=TRIAGE_MODEL, default=None, metavar="MODEL",
+                    help=f"cheap triage before the investigation (default model: {TRIAGE_MODEL})")
     args = ap.parse_args()
 
     output = (args.output or ROOT / ".demo-runs" / time.strftime("%Y%m%d-%H%M%S")).resolve()
@@ -174,6 +183,8 @@ def main() -> int:
     # Keep the configured shared budget location across runs. Incident artifacts still belong
     # to each output directory, but ModelClient's DailyBudget must not reset with --output.
     settings.history_dir = settings.history_dir.resolve()
+    if args.triage:
+        settings.triage_model = args.triage
 
     try:
         client = ModelClient(settings)
@@ -204,7 +215,7 @@ def main() -> int:
     print(f"\nDemo repository: {repo}\nRunner: {args.runner}\nVerifier: {verifier_name}\n"
           f"Model calls: {settings.debug_dir}\n")
 
-    pipeline = Pipeline(client, make_runner(args.runner, repo), verifier, RepoView(repo), HistoryStore(output / "history"),
+    pipeline = Pipeline(client, make_runner(args.runner, repo), verifier, RepoView(repo), HistoryStore((args.history or output / "history").resolve()),
                         settings)
     alerts_dir = Path(demo["alerts"])
     available = discover(alerts_dir)
@@ -232,6 +243,8 @@ def main() -> int:
                         "cost_usd": inc.usage.cost_usd, "tokens": inc.usage.tokens,
                         "model_calls": len(inc.usage.calls), "patch_attempts": len(inc.attempts),
                         "web_searches": sum(e.message.startswith("Web search (") for e in inc.events),
+                        "memory_hits": len(inc.similar_incidents),
+                        "triage": inc.triage.category if inc.triage else None,
                         "models": sorted({c.model for c in inc.usage.calls}),
                         "seconds": round(time.time() - started, 1), "incident": inc.id})
         if inc.final_patch:
