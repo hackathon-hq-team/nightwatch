@@ -29,16 +29,16 @@ class HistoryStore:
     def save(self, incident: Incident) -> None:
         tmp = self.path(incident.id).with_suffix(".tmp")
         tmp.write_text(incident.model_dump_json(indent=2), encoding="utf-8")
-        for attempt in range(5):
+        # Atomic: the UI never reads half a file. On Windows a reader or antivirus can hold the target
+        # for a moment (WinError 5/32); retry those briefly instead of failing the incident.
+        for attempt in range(6):
             try:
-                tmp.replace(self.path(incident.id))  # atomic: readers never see half a file
-                break
+                tmp.replace(self.path(incident.id))
+                return
             except PermissionError as error:
-                # Windows readers/antivirus can briefly hold the destination.
-                # Other permission failures are not transient and must stay visible.
-                if getattr(error, "winerror", None) not in (5, 32) or attempt == 4:
+                if getattr(error, "winerror", None) not in (5, 32) or attempt == 5:
                     raise
-                time.sleep(0.02 * (attempt + 1))
+                time.sleep(0.05 * (attempt + 1))
 
     def load(self, incident_id: str) -> Incident:
         return Incident.model_validate_json(self.path(incident_id).read_text(encoding="utf-8"))

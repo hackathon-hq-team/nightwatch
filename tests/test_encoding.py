@@ -37,3 +37,28 @@ def test_history_is_utf8_under_a_non_utf8_locale(tmp_path):
     assert res.returncode == 0, res.stderr
     files = list((tmp_path / "history").glob("inc-*.json"))
     assert json.loads(files[0].read_bytes().decode("utf-8"))["alert"]["title"] == "naïve → crash ✓"
+
+
+def test_history_save_retries_transient_windows_lock(tmp_path, monkeypatch):
+    """WinError 5/32 while replacing the file (antivirus, a UI reader) must not fail the incident."""
+    from pathlib import Path
+
+    from nightwatch.history import HistoryStore
+    from nightwatch.schemas import Alert, Incident
+
+    store = HistoryStore(tmp_path)
+    inc = Incident(alert=Alert(title="t", exception_type="E", commit="c"))
+    real, calls = Path.replace, []
+
+    def flaky(self, target):
+        calls.append(1)
+        if len(calls) < 3:
+            err = PermissionError(13, "Access is denied")
+            err.winerror = 5
+            raise err
+        return real(self, target)
+
+    monkeypatch.setattr(Path, "replace", flaky)
+    monkeypatch.setattr("nightwatch.history.time.sleep", lambda s: None)
+    store.save(inc)
+    assert len(calls) == 3 and store.load(inc.id).id == inc.id

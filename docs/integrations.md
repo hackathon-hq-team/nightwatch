@@ -131,6 +131,9 @@ deployment remain separate tasks before remote hosting.
   **232 passed in 287.75s**. Report: `.qa-results/pr-final-green.xml`.
   The upstream EOF-patch fixture now writes UTF-8/LF explicitly so its plain
   `git apply` check remains valid on Windows.
+- After integrating main through `4cbd76f`, the affected history, demo runner,
+  pipeline, UI and integration checks passed with Docker enabled:
+  **64 passed in 163.49s**. Report: `.qa-results/pr-main-followup-elevated.xml`.
 - Browser check: `snapshot-pagination` reached `verified` and displayed a separate
   successful independent acceptance result with downloadable details.
 - A subsequent live `inventory-replay` run with Nemotron Super completed as
