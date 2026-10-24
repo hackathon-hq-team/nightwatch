@@ -25,6 +25,13 @@ Prepare from the repository root: `python -m tools.prepare_demo --output .demo-w
 See the [scenario contracts, independent acceptance checks and live-run handoff](docs/complex-scenarios.md).
 Offline cycles use scripted responses; live model quality, Tavily and container execution require separate validation.
 
+The optional `diverse` suite expands this to **17 scheduled cases**: HTTP behavior,
+cross-file causes, a misleading deployment diff, four report outcomes and one repeated
+incident. See [setup, scenario inventory and team handoff](docs/diverse-scenarios.md)
+before using `python -m tools.prepare_demo --suite diverse --output .demo-workspace-diverse`.
+HTTP fixtures require `diverse-app/requirements.txt` on the host and in the test image.
+The default seven-case suite and model limits are unchanged.
+
 Combined verifier/demo validation and failure checks:
 [QA instructions](docs/qa-integration.md).
 

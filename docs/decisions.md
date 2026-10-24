@@ -1,5 +1,34 @@
 # Integration decisions
 
+## NW-SCENARIOS-04: varied seventeen-case checkpoint suite
+
+Danik confirmed Nikita's revised request on 24 October 2026: create a separate PR
+with 17 scheduled cases based on main, leaving the advanced-scenarios draft PR #18
+independent. Variety takes priority over increasing algorithmic difficulty.
+
+- Keep the existing seven-case suite as the default. An explicit `--suite diverse`
+  adds three FastAPI cases, two cross-file causes, one unrelated deployment diff,
+  three synthetic insufficient-evidence reports and one repeated inventory incident.
+  Expected totals are 13 verified fixes and four reports, including one deliberate repeat.
+- Add pinned optional HTTP fixture requirements in `diverse-app/requirements.txt`.
+  Timur must install them in the Docker image and validate the rebuilt runner; the
+  host also needs them to capture actual failures. No database behavior is claimed.
+- Preserve real traceback frames. Cross-file fixtures intentionally expose the current
+  context collector's inability to include a producer that has already returned.
+  Nikita owns any follow-up context change; this task does not modify core code or prompts.
+- Keep independent answers outside the generated application. Acceptance permits only
+  the intended application file and checks all 67 original tests in a diverse workspace,
+  the frozen reproducer and the scenario's additional answers. No core status is redefined.
+- Repeat the same broken commit/input with a new incident ID in one shared run history.
+  The optional `--memory-pair` selects just the original and repeat. Saved usage reports
+  include all calls and require independent acceptance before comparing quality-confirmed
+  costs; scripted tests do not establish live model savings.
+- Alert, Incident, runner and verifier contracts stay unchanged. The optional suite
+  selector is fixture metadata, not a new product or public arbitrary-code service.
+  Nikita owns live model/context validation; Timur owns Docker/UI integration.
+
+See [scenario inventory, commands and stop point](diverse-scenarios.md).
+
 ## NW-SCENARIOS-02: harder scenarios for the next checkpoint
 
 Team request relayed by Danik on 23 October 2026: prepare 5–8 runnable scenarios in a

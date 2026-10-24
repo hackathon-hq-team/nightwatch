@@ -64,16 +64,20 @@ else:
     return json.loads(result.stdout)
 
 
-def prepare_complex(repo: Path, alerts: Path, base: str) -> dict:
+def prepare_complex(repo: Path, alerts: Path, base: str, cases=None) -> dict:
     """Keep reference repairs off the runtime commit's ancestry and prompt diff."""
     scenarios = {}
-    for case in CASES:
+    for case in CASES if cases is None else cases:
         slug, app_file = case["slug"], case["app_file"]
         git(repo, "checkout", "-qb", f"fixture/{slug}", base)
         app = repo / app_file
         broken_source = app.read_text(encoding="utf-8")
-        # The parent has the same faulty application. ContextBuilder may show that
-        # diff, so never make the reference repair the runtime commit's parent.
+        # Only explicitly declared presentation changes enter the decoy's deployment
+        # diff. Reference repairs never become runtime ancestry or prompt evidence.
+        for path, replacements in case.get("decoy_changes", {}).items():
+            target = repo / path
+            write(target, replace_once(target.read_text(encoding="utf-8"), replacements))
+            git(repo, "add", path)
         git(repo, "commit", "--allow-empty", "-qm", f"fixture: capture {slug} incident")
         broken = git(repo, "rev-parse", "HEAD")
         observed = observe(repo, case["call"], case["exception_type"])
@@ -94,13 +98,33 @@ def prepare_complex(repo: Path, alerts: Path, base: str) -> dict:
     return scenarios
 
 
-def prepare(output: Path) -> dict:
+def require_diverse_dependencies() -> None:
+    """Fail before creating a partial workspace when optional HTTP tools are absent."""
+    from importlib.util import find_spec
+
+    missing = [name for name in ("fastapi", "httpx") if find_spec(name) is None]
+    if missing:
+        raise RuntimeError("The diverse suite requires " + ", ".join(missing)
+                           + "; install with python -m pip install -r diverse-app/requirements.txt")
+
+
+def prepare(output: Path, suite: str = "standard") -> dict:
+    if suite not in {"standard", "diverse"}:
+        raise ValueError(f"Unknown scenario suite: {suite}")
+    cases = CASES
+    if suite == "diverse":
+        require_diverse_dependencies()
+        from evaluation.diverse_catalog import CASES as diverse_cases
+        cases = diverse_cases
     output = output.resolve()
     # Never overwrite a teammate's repository or an earlier run's evidence.
     output.mkdir(parents=True, exist_ok=False)
     repo = output / "repo"
     shutil.copytree(ROOT / "demo-app", repo,
                     ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"))
+    if suite == "diverse":
+        shutil.copytree(ROOT / "diverse-app", repo, dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns("__pycache__", "*.pyc", ".pytest_cache"))
     calc = repo / "app/calc.py"
     broken_source = calc.read_text(encoding="utf-8")
     if broken_source.count(RETURN_LINE) != 1:
@@ -154,8 +178,22 @@ else:
     }
     for name, alert in [("empty-sample", empty), ("insufficient-evidence", insufficient)]:
         write(alerts / f"{name}.json", json.dumps(alert, ensure_ascii=False, indent=2) + "\n")
-    scenarios = prepare_complex(repo, alerts, broken)
-    manifest = {"mode": "fixture", "repo": str(repo), "good_commit": good, "broken_commit": broken,
+    scenarios = prepare_complex(repo, alerts, broken, cases)
+    if suite == "diverse":
+        from evaluation.diverse_catalog import REPEAT_OF, REPEAT_SLUG
+        from evaluation.refusal_cases import REFUSALS
+
+        for case in REFUSALS:
+            alert = {key: value for key, value in case.items() if key != "slug"}
+            alert.update(source="scenario", commit=broken, stacktrace=[])
+            write(alerts / f"{case['slug']}.json", json.dumps(alert, indent=2) + "\n")
+        # Same broken snapshot, fresh incident ID at runtime. Patches execute only
+        # in disposable copies, so this is a real recurrence, not an already-fixed app.
+        repeat = json.loads((alerts / f"{REPEAT_OF}.json").read_text(encoding="utf-8"))
+        repeat["title"] = "Repeated incident: " + repeat["title"]
+        write(alerts / f"{REPEAT_SLUG}.json", json.dumps(repeat, indent=2) + "\n")
+        scenarios[REPEAT_SLUG] = {**scenarios[REPEAT_OF], "repeat_of": REPEAT_OF}
+    manifest = {"mode": "fixture", "suite": suite, "repo": str(repo), "good_commit": good, "broken_commit": broken,
                 "alerts": str(alerts), "scenarios": scenarios}
     write(output / "manifest.json", json.dumps(manifest, indent=2) + "\n")
     return manifest
@@ -164,8 +202,10 @@ else:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True, help="New directory; must not already exist")
+    parser.add_argument("--suite", choices=["standard", "diverse"], default="standard",
+                        help="standard: existing seven; diverse: seventeen checkpoint scenarios")
     args = parser.parse_args()
-    print(json.dumps(prepare(args.output), indent=2))
+    print(json.dumps(prepare(args.output, suite=args.suite), indent=2))
 
 
 if __name__ == "__main__":

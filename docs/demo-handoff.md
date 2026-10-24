@@ -5,6 +5,12 @@ bug scenarios. Preparation creates **seven** Alert-compatible JSON files. Detail
 contracts and acceptance commands are in [complex-scenarios.md](complex-scenarios.md).
 All application code is a local educational fixture; it is not a deployed service.
 
+For the revised checkpoint, use the optional **17-case diverse suite** described in
+[diverse-scenarios.md](diverse-scenarios.md). It adds six repairable incidents, three
+synthetic report cases and one repeated inventory incident. Install its HTTP requirements
+on the host and in Timur's test image before selecting `--suite diverse`. The commands
+below continue to describe the default seven-case suite.
+
 ## Local fixture checks
 
 Use the project Python environment from the repository root:
