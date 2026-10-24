@@ -78,6 +78,10 @@ def evaluate(case: dict, alert: Alert, patch: str, runner) -> dict:
         return result
 
     try:
+        expected_baseline = BASELINE_COUNT
+        if case.get("suite") == "diverse":
+            from evaluation.diverse_catalog import baseline_count
+            expected_baseline = baseline_count("diverse")
         validate_patch_scope(patch, case["app_file"])
         checks["patch_scope_allowed"] = True
         if not alert.previous_good_commit or alert.exception_type != case["exception_type"]:
@@ -96,7 +100,7 @@ def evaluate(case: dict, alert: Alert, patch: str, runner) -> dict:
         baseline = record("baseline", runner.run(alert.commit, {}, select=["tests"]))
         checks["baseline_green"] = bool(
             _green(baseline, alert.commit) and baseline.tests_hash == baseline_hash
-            and len(baseline.passed) == BASELINE_COUNT and baseline.patch_applied is None
+            and len(baseline.passed) == expected_baseline and baseline.patch_applied is None
         )
         if not checks["baseline_green"]:
             return stop("Broken-version baseline did not pass every expected original test")
@@ -109,7 +113,7 @@ def evaluate(case: dict, alert: Alert, patch: str, runner) -> dict:
             and broken.patch_applied is None and not broken.passed
             and len(broken.failures) == 1
         )
-        expected_count = BASELINE_COUNT + 1 + case["acceptance_count"]
+        expected_count = expected_baseline + 1 + case["acceptance_count"]
         checks["known_good_oracles_green"] = bool(
             _green(golden, alert.previous_good_commit) and golden.tests_hash == frozen_hash
             and golden.patch_applied is None and len(golden.passed) == expected_count
@@ -137,11 +141,19 @@ def evaluate(case: dict, alert: Alert, patch: str, runner) -> dict:
 
 def load_inputs(workspace: Path, scenario: str, incident_path: Path):
     """Bind a saved Incident to one generated scenario before executing its patch."""
-    case = next((item for item in CASES if item["slug"] == scenario), None)
-    if case is None:
-        raise ValueError("Unknown complex scenario")
     workspace = workspace.resolve()
     manifest = json.loads((workspace / "manifest.json").read_text(encoding="utf-8"))
+    suite = manifest.get("suite", "standard")
+    if suite == "diverse":
+        from evaluation.diverse_catalog import get_case
+        case = get_case(scenario)
+    elif suite == "standard":
+        case = next((item for item in CASES if item["slug"] == scenario), None)
+    else:
+        raise ValueError("Unknown scenario suite")
+    if case is None:
+        raise ValueError("Unknown repairable scenario")
+    case = {**case, "suite": suite}
     entry = manifest["scenarios"][scenario]
     repo = workspace / "repo"
     if manifest.get("mode") != "fixture" or Path(manifest["repo"]).resolve() != repo:
