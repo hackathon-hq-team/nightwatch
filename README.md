@@ -12,6 +12,8 @@ Briefly describe the problem and target users (1–2 sentences).
 
 ## ▶️ Getting started
 
+Agent design (context, prompts, patch edits, escalation, Tavily, memory): [docs/agent.md](docs/agent.md).
+
 Streamlit operator console: [UI setup and demo modes](docs/ui.md).
 
 Complex-scenario acceptance, signed Sentry alerts and Draft PRs: [integration setup](docs/integrations.md).

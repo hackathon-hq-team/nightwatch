@@ -9,6 +9,26 @@ alert → context.py → Nemotron Super: hypotheses + test → runner (broken an
                                       ↑ up to 3 attempts, the rejection reason feeds the next one
 ```
 
+## Reliability with a reasoning model
+
+Nemotron 3 Super reasons before it answers, and live runs exposed several ways a correct idea can
+be lost on the way to a verified patch. Each is handled in code:
+
+- **Cut-off replies.** Investigation and patch calls get 8192 tokens; a reply cut off by the limit
+  (`finish_reason=length`) is retried once with double the room (cap 16384), without sending the
+  cut-off text back.
+- **Unusable replies are failed attempts, not crashes.** A reply that is still not valid JSON
+  counts as a rejected attempt (recorded in `Attempt.error`); the next attempt runs and may
+  escalate. If no attempt yields a usable reply, the incident ends with a diagnostic report.
+- **Provider hiccups.** 5xx, 429, timeouts and dropped connections are retried after 5, 15 and
+  30 s; other errors are raised at once. Failed calls are not billed.
+- **Reproduction tests assert properties.** The prompt forbids hand-computed exact outputs: the test
+  asserts that the alert's exception is gone plus properties stated in code, docstrings or existing
+  tests, and must never contradict existing tests. A wrong expectation would otherwise freeze an
+  unsatisfiable acceptance criterion.
+- **Rejected hypotheses.** A hypothesis is stored as rejected only when the next investigation moves
+  to another cause; a failed test alone is not evidence against it (it would mislead memory).
+
 ## Model escalation
 
 Nemotron 3 Super does the work. After failures the pipeline switches to the escalation model
@@ -36,9 +56,9 @@ The patch prompt asks for `edits` — `{file, old, new}` where `old` is the exac
 and `nightwatch/edits.py` builds the unified diff from the real file content. Models write a
 correct fix far more reliably than a line-perfect diff: in the 24 Oct live run Super and Ultra both
 wrote the right fix for `packaging-legacy-release`, but each diff invented a blank context line and
-`git apply` rejected it. Matching is exact first, then tolerant of trailing whitespace; an `old`
-that is missing or ambiguous rejects the attempt before the runner and the reason goes back to the
-model. The stored `PatchProposal.diff`, the runner, the verifier and the UI are unchanged; a raw
+`git apply` rejected it. Matching is exact first, then tolerant of trailing whitespace, then of
+one constant indentation shift (the replacement is re-indented to match); an `old` that is missing
+or ambiguous rejects the attempt before the runner and the reason goes back to the model. The stored `PatchProposal.diff`, the runner, the verifier and the UI are unchanged; a raw
 `diff` reply is still accepted (scripted demos).
 
 ## Web search for known library issues (optional)
@@ -102,37 +122,33 @@ its category per scenario. Compare a run with and without it before turning it o
 | --- | --- |
 | `nightwatch/schemas.py` | Shared models: `Alert`, `Evidence`, `Investigation`, `PatchProposal`, `RunResult`, `Verdict`, `Incident` |
 | `nightwatch/contracts.py` | `Runner` (Timur) and `Verifier` (Danik) interfaces |
-| `nightwatch/model_client.py` | Nemotron via Token Factory: schema-validated JSON, retry, token accounting, budgets |
+| `nightwatch/model_client.py` | Nemotron via Token Factory: schema-validated JSON, cut-off and transient-error retries, token accounting, budgets |
 | `nightwatch/context.py` | Evidence with ids `E1…`: stack trace, request, logs, diff, files, similar incidents |
 | `nightwatch/history.py` | `history/inc-*.json` and similar-incident search (memory) |
-| `nightwatch/prompts.py` | Investigation, patch and report prompts |
+| `nightwatch/prompts.py` | Triage, investigation, patch and report prompts |
+| `nightwatch/edits.py` | Patch edits `{file, old, new}` → exact unified diff |
+| `nightwatch/web_search.py` | Optional Tavily search for known library issues: trigger rules, scrubbed query, cache |
 | `nightwatch/pipeline.py` | Orchestrator and incident states |
 | `nightwatch/sentry.py` | Sentry event → `Alert` |
 | `nightwatch/pytest_plugin.py` | Writes pytest results with the exception signature to JSON |
-| `nightwatch/dev/` | Temporary `LocalRunner` (pytest without Docker) and `ReferenceVerifier` until Timur's and Danik's modules land |
+| `nightwatch/dev/` | `LocalRunner` (pytest in a temporary copy, no isolation) and the `ReferenceVerifier` used by unit tests |
+| `nightwatch/docker_runner.py` | Timur's isolated runner (`docs/docker-runner.md`) |
+| `verifier.py` | Danik's verifier (`docs/verifier.md`) |
 
-## Contract for Timur (runner)
+## Contracts
 
-Implement `contracts.Runner`: `run(commit, test_files, patch, select) -> RunResult` and `tests_hash(...)`.
-
-- copy of the project at `commit`, write `test_files`, then the patch: `git apply --recount`, fallback `patch -p1 --fuzz=3`;
-- pytest with the plugin: `NIGHTWATCH_REPORT=/tmp/r.json pytest -p nightwatch.pytest_plugin` — the plugin reports `passed` and `failures` with exception type, message, file and function;
-- `--network none`, no keys in the environment, a timeout;
-- a patch that does not apply → `status="error", patch_applied=False`; `tests_hash` is sha256 of all `tests/**/*.py` after the patch.
-
-Reference behaviour: `nightwatch/dev/local_runner.py`.
-
-## Contract for Danik (verifier)
-
-Implement `contracts.Verifier`: `check_reproduction(...)` and `check_patch(...)` → `Verdict(ok, reason, checks)`. Reference: `nightwatch/dev/reference_verifier.py`; the tests in `tests/test_pipeline.py` show which cases it must catch.
+`nightwatch/contracts.py` defines the `Runner` (implemented by Timur in `nightwatch/docker_runner.py`)
+and the `Verifier` (implemented by Danik in `verifier.py`). The pipeline depends only on these
+protocols; `nightwatch/dev/` keeps the local runner and the reference verifier for tests.
 
 ## Running
 
-First live run on Danik's demo scenarios (needs his PR #5 merged and a key in `.env`):
+Live runs on Danik's scenarios (a key in `.env`):
 
 ```bash
-python scripts/run_demo.py --check-only   # key works, Nemotron model id is valid
-python scripts/run_demo.py                # empty-sample must end verified, insufficient-evidence reported
+python scripts/run_demo.py --check-only                 # key, model ids, runner and web search are ready
+python scripts/run_demo.py --web-search                 # standard suite, 7 scenarios
+python scripts/run_demo.py --web-search --suite diverse # 17 scenarios (needs diverse-app/requirements.txt)
 ```
 
 Each run goes to `.demo-runs/<time>/`: `summary.json`, the incident history and every prompt with the raw
@@ -144,7 +160,7 @@ does not reset the daily counter. Per-run incident history still goes to `<outpu
 The budget check happens before each request; it is not a prepaid reservation and does not provide
 atomic enforcement across simultaneous processes. An in-flight response can exceed the remaining limit.
 
-For `insufficient-evidence`, `reported` alone is not PASS. Acceptance requires a completed investigation,
+For an expected `reported` outcome, `reported` alone is not PASS. Acceptance requires a completed investigation,
 a diagnostic report with facts and next steps, and no patch attempts. Budget stops, failed report calls,
 runner errors and timeouts are FAIL, with an `acceptance_reason` in `summary.json`.
 Fallback diagnostic reports remain available to the UI, but do not count as a completed demo evaluation.
@@ -161,5 +177,7 @@ pytest -q                       # tests, no network or key needed
 
 ## Open questions
 
-- Exact Nemotron 3 Super id and `response_format` support in Token Factory (the client falls back to plain mode on its own).
-- The Sentry SDK in the demo project must set `release=<git sha>` and a `previous_release` tag, otherwise `sentry.py` cannot tell the version.
+- Context beyond the stack trace: bugs in a module the failing code imports are not shown to the
+  model yet.
+- The Sentry SDK in the target project must set `release=<git sha>` and a `previous_release` tag,
+  otherwise `sentry.py` cannot tell the version.
