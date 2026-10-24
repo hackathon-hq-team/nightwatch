@@ -23,6 +23,15 @@ from .schemas import ModelCall, Usage
 
 T = TypeVar("T", bound=BaseModel)
 MAX_TOKENS_CAP = 16384  # upper bound when a cut-off reply is retried with more room
+TRANSIENT_STATUS = {408, 409, 429, 500, 502, 503, 504}
+TRANSIENT_NAMES = {"APIConnectionError", "APITimeoutError", "RateLimitError", "InternalServerError"}
+RETRY_DELAYS_S = (5, 15, 30)  # Token Factory occasionally answers 503 for a few seconds
+
+
+def is_transient(error: Exception) -> bool:
+    """Provider hiccups worth retrying: 5xx, 429, timeouts, dropped connections."""
+    status = getattr(error, "status_code", None)
+    return status in TRANSIENT_STATUS or type(error).__name__ in TRANSIENT_NAMES
 
 
 class BudgetExceeded(RuntimeError):
@@ -131,12 +140,22 @@ class ModelClient:
     # -- low level
 
     def _chat(self, messages: list[dict], max_tokens: int, model: str):
+        """One chat call, retried on transient provider errors (failed calls are not billed)."""
+        for delay in (*RETRY_DELAYS_S, None):
+            try:
+                return self._chat_once(messages, max_tokens, model)
+            except Exception as e:
+                if delay is None or not is_transient(e):
+                    raise
+                time.sleep(delay)
+
+    def _chat_once(self, messages: list[dict], max_tokens: int, model: str):
         kwargs = dict(model=model, messages=messages, max_tokens=max_tokens, temperature=0.2)
         if self._json_mode:
             try:
                 return self._client.chat.completions.create(response_format={"type": "json_object"}, **kwargs)
             except Exception as e:  # endpoint does not know response_format — continue without it
-                if "response_format" not in str(e) and "json" not in str(e).lower():
+                if is_transient(e) or ("response_format" not in str(e) and "json" not in str(e).lower()):
                     raise
                 self._json_mode = False
         return self._client.chat.completions.create(**kwargs)
