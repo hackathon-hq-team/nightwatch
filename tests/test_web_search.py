@@ -225,3 +225,55 @@ def test_pipeline_logs_search_and_passes_results_to_model(demo_repo, tmp_path):
     inc = pipe.run(library_alert(broken, good))
     assert any(e.message.startswith("Web search (error raised inside pydantic)") for e in inc.events)
     assert RESULT.url in llm.calls[0][1] and "UNVERIFIED" in llm.calls[0][1]
+
+
+def _incident_with_web(cited: list[str]):
+    from nightwatch.schemas import Evidence, Incident, Investigation, PatchProposal
+
+    inc = Incident(alert=Alert(title="t", exception_type="InvalidVersion", commit="c"))
+    inc.evidence = [
+        Evidence(id="E1", kind="stacktrace", source="alert", content="x"),
+        Evidence(id="E2", kind="web", source="web, EXTERNAL AND UNVERIFIED, may not match this version: Issue A",
+                 content="a", url="https://github.com/pypa/setuptools/issues/3772"),
+        Evidence(id="E3", kind="web", source="web, EXTERNAL AND UNVERIFIED, may not match this version: Issue B",
+                 content="b", url="https://stackoverflow.com/q/1"),
+    ]
+    inc.investigation = Investigation(hypotheses=[{"summary": "h", "confidence": 0.8, "evidence_ids": ["E1"]}])
+    inc.final_patch = PatchProposal(diff="d", explanation="e", evidence_ids=cited)
+    return inc
+
+
+def test_only_cited_web_sources_are_listed():
+    from nightwatch.web_search import cited_web_sources, references_markdown
+
+    inc = _incident_with_web(["E1", "E2"])
+    assert [e.url for e in cited_web_sources(inc)] == ["https://github.com/pypa/setuptools/issues/3772"]
+    md = references_markdown(inc)
+    assert "[Issue A](https://github.com/pypa/setuptools/issues/3772)" in md and "stackoverflow" not in md
+    assert "still reproduced and verified" in md
+
+
+def test_no_cited_web_source_means_no_section():
+    from nightwatch.web_search import references_markdown
+
+    assert references_markdown(_incident_with_web(["E1"])) == ""
+
+
+def test_each_web_result_is_its_own_citable_evidence(demo_repo):
+    repo, good, broken = demo_repo
+    second = WebResult(title="Another report", url="https://github.com/x/y/issues/2", content="c")
+    evidence, _ = ContextBuilder(RepoView(repo), web=FakeSearch([RESULT, second])).build(library_alert(broken, good))
+    web = [e for e in evidence if e.kind == "web"]
+    assert [e.url for e in web] == [RESULT.url, second.url]
+    assert web[0].id != web[1].id and all("UNVERIFIED" in e.source for e in web)
+
+
+def test_draft_pr_body_lists_cited_upstream_reports():
+    from types import SimpleNamespace
+
+    from app.github_pr import body_for
+
+    run = SimpleNamespace(passed=["t1", "t2"])
+    with_ref = body_for(_incident_with_web(["E2"]), run)
+    assert "Known upstream reports" in with_ref and "issues/3772" in with_ref
+    assert "Known upstream reports" not in body_for(_incident_with_web(["E1"]), run)
