@@ -19,6 +19,7 @@ import traceback
 from . import prompts, web_search
 from .config import Settings
 from .context import ContextBuilder, RepoView, render
+from .edits import EditError, PatchReply, to_proposal
 from .contracts import Runner, Verifier
 from .history import HistoryStore
 from .model_client import LLM, BudgetExceeded, ModelError
@@ -30,7 +31,6 @@ from .schemas import (
     Incident,
     IncidentState,
     Investigation,
-    PatchProposal,
     RunResult,
     Triage,
     Verdict,
@@ -199,13 +199,23 @@ class Pipeline:
             system = prompts.PATCH_SYSTEM.format(max_lines=self.s.max_diff_lines)
             model = self._escalate(inc, n, "patch") if n > self.s.escalate_after_failures else None
             try:
-                proposal = self.llm.complete_json("patch", system, user, PatchProposal, inc.usage,
-                                                  max_tokens=8192, model=model)
+                reply = self.llm.complete_json("patch", system, user, PatchReply, inc.usage,
+                                               max_tokens=8192, model=model)
             except ModelError as e:  # counts as a rejected attempt; the next one may escalate
                 inc.attempts.append(Attempt(n=n, error=str(e)[:500],
                                             verdict=Verdict(ok=False, reason=f"unusable model reply: {e}"[:300])))
                 self._note(inc, f"Patch attempt {n}: unusable model reply")
                 self._save(inc)
+                continue
+            try:
+                proposal = to_proposal(reply, lambda path: self.repo.show(inc.alert.commit, path))
+            except EditError as e:  # edits that do not match the file: rejected before the runner
+                reason = f"edits could not be applied: {e}"
+                inc.attempts.append(Attempt(n=n, error=str(e)[:500],
+                                            verdict=Verdict(ok=False, reason=reason[:300], checks={"edits_apply": False})))
+                self._note(inc, f"Patch attempt {n}: {reason[:150]}")
+                self._save(inc)
+                previous = prompts.PATCH_PREVIOUS.format(n=n, reason=reason, diff="(no diff)", output="")
                 continue
             attempt = Attempt(n=n, patch=proposal)
             inc.attempts.append(attempt)
