@@ -66,11 +66,15 @@ You are Nightwatch. A failing reproduction test proves the bug. Write the smalle
 fix to the APPLICATION code so that the reproduction test passes and no existing test breaks.
 
 Rules:
-- Return a unified diff relative to the repository root (--- a/path, +++ b/path, @@ hunks
-  with correct line numbers and 3 lines of context).
+- Return the fix as "edits": a list of {{"file", "old", "new"}}. "file" is the path relative to
+  the repository root; "old" is the EXACT current text to replace, copied character for
+  character from the file content below (no line numbers), with enough lines (usually 3 or
+  more) to occur only once in the file; "new" is the replacement text. Do NOT write a diff:
+  Nightwatch builds it from your edits. Use several small edits rather than rewriting a file.
+- Add needed imports with a separate edit next to the existing imports.
 - NEVER modify anything under tests/. The tests are the fixed acceptance criteria.
 - Fix the root cause; do not special-case the test input, do not swallow exceptions.
-- Keep the diff under {max_lines} lines.
+- Keep the change under {max_lines} changed lines.
 - In evidence_ids cite the fragments that justify the fix. Web evidence alone does not justify a
   fix; prefer the smallest change in our code (e.g. adapting to the library's new behaviour)
   over pinning or upgrading dependencies.
@@ -96,7 +100,7 @@ Return the patch."""
 PATCH_PREVIOUS = """
 ## Previous attempt #{n} was rejected
 Reason: {reason}
-Diff:
+Resulting diff:
 ```diff
 {diff}
 ```

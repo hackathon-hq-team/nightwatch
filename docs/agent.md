@@ -30,6 +30,17 @@ says whether it is likely reproducible and which evidence to read first. The res
 outcome. A triage failure is logged and skipped; a budget stop still ends the incident. Off by
 default: keep it off until the evaluation shows it helps.
 
+## Patch format: edits, not diffs
+
+The patch prompt asks for `edits` — `{file, old, new}` where `old` is the exact current text —
+and `nightwatch/edits.py` builds the unified diff from the real file content. Models write a
+correct fix far more reliably than a line-perfect diff: in the 24 Oct live run Super and Ultra both
+wrote the right fix for `packaging-legacy-release`, but each diff invented a blank context line and
+`git apply` rejected it. Matching is exact first, then tolerant of trailing whitespace; an `old`
+that is missing or ambiguous rejects the attempt before the runner and the reason goes back to the
+model. The stored `PatchProposal.diff`, the runner, the verifier and the UI are unchanged; a raw
+`diff` reply is still accepted (scripted demos).
+
 ## Web search for known library issues (optional)
 
 Some production errors come from a third-party library: a known bug, or a behaviour change after a
