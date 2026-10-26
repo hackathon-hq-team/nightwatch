@@ -1,4 +1,4 @@
-# Verifier: Danik's component
+# Verifier
 
 `verifier.py` implements the existing `nightwatch.contracts.Verifier` interface without changing
 shared data models. Select it with `--verifier team` in the CLI. The default remains the development

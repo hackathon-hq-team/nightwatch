@@ -71,7 +71,7 @@ pipeline behavior and optional previous-good support remain unchanged.
 
 ## Live model run
 
-Nikita configures Nebius and Timur validates Docker using [docker-runner.md](docker-runner.md).
+Nikita configures Nebius and Timur validates Docker using [docker-runner.md](../docker-runner.md).
 Run from the project root; the commands below require that integration environment:
 
 ```bash
