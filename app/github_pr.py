@@ -13,6 +13,7 @@ from urllib.parse import quote, urlencode
 from nightwatch.docker_runner import Runner, safe_path
 from nightwatch.pipeline import check_diff, diff_files
 from nightwatch.schemas import Incident
+from nightwatch.web_search import references_markdown
 from verifier import Verifier
 
 
@@ -90,10 +91,13 @@ def reverify(incident: Incident, metadata, runner=None):
 
 
 def body_for(incident, run):
+    references = references_markdown(incident)
+    references = references + "\n\n" if references else ""
     return (f"Nightwatch reproduced `{incident.alert.exception_type}` at commit `{incident.alert.commit}` "
             "and verified this patch in an isolated Docker container.\n\n"
             f"Incident: `{incident.id}`\n\n"
             f"{incident.final_patch.explanation}\n\n"
+            f"{references}"
             f"Validation: reproduction matched the alert; {len(run.passed)} tests passed; "
             "the frozen test hash is unchanged. The reproduction test is included in this PR.\n\n"
             f"Model usage: {incident.usage.tokens} tokens, estimated ${incident.usage.cost_usd:.4f}.\n\n"

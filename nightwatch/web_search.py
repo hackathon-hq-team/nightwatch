@@ -205,6 +205,35 @@ class CachedSearch:
         return results
 
 
+def cited_web_sources(incident) -> list:
+    """Web evidence the model actually relied on: cited by a hypothesis, the verified patch or the
+    report. Pages it was shown but did not use are not listed."""
+    web = {e.id: e for e in incident.evidence if e.kind == "web" and e.url}
+    if not web:
+        return []
+    cited: set[str] = set()
+    hypotheses = list(incident.investigation.hypotheses) if incident.investigation else []
+    if incident.report:
+        hypotheses += incident.report.hypotheses
+        for fact in incident.report.facts:
+            cited.update(re.findall(r"E\d+", fact))
+    for h in hypotheses:
+        cited.update(h.evidence_ids)
+    if incident.final_patch:
+        cited.update(incident.final_patch.evidence_ids)
+    return [web[i] for i in sorted(cited & web.keys(), key=lambda x: int(x[1:]))]
+
+
+def references_markdown(incident) -> str:
+    """'Known upstream reports' section for a Draft PR or report; empty when none were cited."""
+    sources = cited_web_sources(incident)
+    if not sources:
+        return ""
+    lines = [f"- [{e.source.split(': ', 1)[-1]}]({e.url})" for e in sources]
+    return ("Known upstream reports the investigation relied on (external, found with Tavily; the fix "
+            "was still reproduced and verified here):\n" + "\n".join(lines))
+
+
 def from_settings(settings) -> WebSearch | None:
     """The configured search, or None when it is off or has no key."""
     if not settings.web_search or not settings.tavily_api_key:

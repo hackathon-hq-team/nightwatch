@@ -84,6 +84,7 @@ class Evidence(BaseModel):
     source: str  # file path, commit range, "sentry", etc.
     content: str
     truncated: bool = False
+    url: str = ""  # web evidence only: the page the snippet came from
 
     @property
     def approx_tokens(self) -> int:

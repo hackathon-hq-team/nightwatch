@@ -84,10 +84,10 @@ class ContextBuilder:
         items: list[Evidence] = []
         self.notes = []
 
-        def add(kind, source, content, truncated=False):
+        def add(kind, source, content, truncated=False, url=""):
             if content and content.strip():
                 items.append(Evidence(id=f"E{len(items) + 1}", kind=kind, source=source,
-                                      content=content.strip(), truncated=truncated))
+                                      content=content.strip(), truncated=truncated, url=url))
 
         # 1. Stack trace
         if alert.stacktrace:
@@ -158,9 +158,10 @@ class ContextBuilder:
             self.notes.append(f"Web search failed ({type(e).__name__}); continuing without it")
             return
         self.notes.append(f"Web search ({hint.reason}): \"{query}\" — {len(results)} results")
-        if results:
-            add("web", f"web search, EXTERNAL AND UNVERIFIED, may not match this version: \"{query}\"",
-                format_results(results))
+        # One fragment per page, so the model can cite the exact source it relied on.
+        for r in results:
+            add("web", f"web, EXTERNAL AND UNVERIFIED, may not match this version: {r.title.strip()[:150]}",
+                format_results([r]), url=r.url)
 
     def _fit(self, items: list[Evidence]) -> list[Evidence]:
         """Fit the budget: earlier items are kept whole, the one that overflows is truncated, the rest dropped."""

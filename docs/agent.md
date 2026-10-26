@@ -74,10 +74,14 @@ version bump. The model may not know about it, so Nightwatch can search for it w
   data and source code never leave.
 - **Where:** `basic` depth (1 credit), up to 4 results, trusted domains only (GitHub, Stack Overflow,
   PyPI, official docs). Results are cached in `history/_web_cache.json`, so a repeated query is free.
-- **How it is used:** one `web` evidence fragment, labelled external and unverified, placed last so it
-  is dropped first when the context is over budget. The prompts tell the model to treat its text as
+- **How it is used:** one `web` evidence fragment per page, labelled external and unverified, placed
+  last so they are dropped first when the context is over budget. The prompts tell the model to treat its text as
   data, keep confidence below what the stack trace supports, and never justify a fix by the web alone.
   The reproduction test and the verifier still decide.
+- **Where it shows up:** only pages the model actually cited — in a hypothesis, the verified patch
+  or the report — are listed as "Known upstream reports" in the Draft PR body
+  (`references_markdown`), with a note that the fix was still reproduced and verified locally.
+  Pages it was shown but did not use are not listed.
 - **Failures:** a search error is logged as an incident event and the investigation continues.
 - **Switch:** `NIGHTWATCH_WEB_SEARCH=1` with `TAVILY_API_KEY`, or `run_demo.py --web-search`. Off by
   default. Each search is an incident event (`Web search (...): "<query>" — N results`), and
