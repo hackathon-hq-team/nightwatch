@@ -1,10 +1,10 @@
-# Seventeen varied checkpoint scenarios
+# Scenarios
 
-NW-SCENARIOS-04 implements Nikita's revised request: cover different failure modes,
-not increasingly elaborate algorithms. The initial fixture baseline was `main` at `11d275e`.
-It is independent of the three advanced scenarios in draft PR #18; those are not
-included in these counts. Use `--suite diverse` for 17 cases; the default `standard`
-suite remains the existing seven. All runtime outcomes and provider limits stay unchanged.
+Nightwatch is measured on scenarios with known answers. They cover different failure modes
+rather than increasingly elaborate algorithms, and include cases where the correct outcome is a
+report, not a fix. `--suite standard` (default) runs the first seven; `--suite diverse` runs all
+17. Each repairable scenario has hidden acceptance tests the model never sees
+(see [Live run](#live-run)).
 
 ## Scenario inventory
 
@@ -38,11 +38,9 @@ FastAPI behavior; they do not demonstrate PostgreSQL integration or real authent
 The `demo-token` constant is explicitly fixture data. See the official
 [FastAPI testing guide](https://fastapi.tiangolo.com/tutorial/testing/).
 
-**Timur's integration prerequisite:** install `diverse-app/requirements.txt` in the
-test image, rebuild it, then repeat the HTTP checks inside Docker. This PR deliberately
-does not edit the Dockerfile or claim that the current image already has these packages.
-The current image only installs pytest. Missing imports are setup failures, never successful
-reproduction. The host also needs these packages because preparation captures real failures.
+The Docker test image must include the same packages for the HTTP cases to run in the sandbox.
+Missing imports are setup failures, never successful reproduction. The host also needs these
+packages because preparation captures real failures.
 
 The wrong-status case records a **client-side contract probe**, not a fabricated server
 exception. Its alert says so explicitly. Independent acceptance checks the actual HTTP
@@ -51,15 +49,10 @@ status and body directly; removing the probe's assertion cannot produce an accep
 ## Context and diff cases
 
 The cross-file producers finish before the consumers raise. Captured tracebacks therefore
-contain the real consumer frames and no producer frame. The consumer imports the producer,
-but the current context builder only sends traceback files. Tests confirm that the actual
-buggy producer source is absent from the model's file evidence.
-
-The trusted reference repair is executable and independently verified, but a scripted
-cycle is not proof that the live model can repair an unseen file. A live failure here is
-useful benchmark evidence. Nikita owns any decision to extend context collection or add
-file retrieval. This PR does not inject the answer or a fabricated frame to hide that limit.
-Only the producer is permitted in independent patch acceptance; weakening consumer
+contain the real consumer frames and no producer frame. The producer reaches the model only
+because the context builder adds the modules the failing files import (see
+[agent.md](agent.md#context-beyond-the-stack-trace)); no answer or fabricated frame is
+injected. Only the producer is permitted in independent patch acceptance; weakening consumer
 validation is rejected.
 
 The receipt scenario has an actual deployment diff in `app/receipt_view.py`; the invoice
@@ -83,9 +76,9 @@ original tests and their requirements/instructions. Preparation captures the rea
 repairable failures and labels synthetic reports separately. Scripted offline runs
 verify control flow, frozen hashes and independent answers, not model judgment or spending.
 
-## Nikita's live run
+## Live run
 
-After Timur's image dependency update, retain the team's current provider settings and limits:
+With the HTTP packages in the runner image and the provider settings from `.env`:
 
 ```bash
 python -m scripts.run_demo --suite diverse --runner docker --check-only
@@ -139,30 +132,3 @@ If the first incident ends in `failed`, the current history store does not expos
 memory. The report then rejects the pair with exit code 2 instead of claiming a memory
 comparison. Preserve both original summary rows and their costs; a missing memory link
 is an incomplete experiment, not evidence that a repeat became cheaper.
-
-## Validation recorded on 24 October 2026
-
-- Python 3.11.9 on Windows, pytest 9.1.1 and the pinned HTTP fixture requirements.
-- Initial full suite: **245 passed, 12 skipped, one failed**. All **54 newly added checks**
-  passed, covering discovery, real failures, reference repairs, ten incorrect repairs,
-  independent acceptance, refusals, repeat history, CLI selection and usage reporting.
-- The remaining failure is the existing
-  `tests/test_edits.py::test_no_newline_at_end_of_file` (`git apply` rejects its patch
-  on this Windows setup). It also fails in the unchanged `main` snapshot at `11d275e`;
-  the shared edit implementation is outside this task and was not changed.
-- Eight skips require Docker/the runner image; four require Streamlit. No Docker/UI
-  validation is claimed here.
-- The documented preparation command completed and produced 17 valid alerts:
-  13 expected verified results and four expected reports. This validates fixture
-  generation, not 17 live model successes. Local scripted execution used no provider API.
-- Integration with `main` at `89dd7b7`: **256 passed, 12 skipped, one failed** using
-  `python -m pytest -q --tb=short --junitxml=.qa-results/diverse-merge-main.xml`.
-  The only failure remains the same Windows patch test above. Both the diverse-suite
-  options and main's shared-history/triage options are preserved.
-
-## Ownership and stop point
-
-Danik delivers scenarios, expected behavior, negative checks and instructions. Nikita
-owns live model runs, context/memory behavior and report-generation changes. Timur owns
-Docker dependency installation and UI integration. No runtime model, prompt, verifier,
-storage, UI or Docker implementation is changed by this scenario task.

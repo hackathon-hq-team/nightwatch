@@ -1,4 +1,4 @@
-# Docker runner (Timur)
+# Docker runner
 
 `nightwatch.docker_runner.Runner` implements `contracts.Runner`; `runner.py` keeps
 the original team import working. CLI selection: `--runner team --verifier team`.

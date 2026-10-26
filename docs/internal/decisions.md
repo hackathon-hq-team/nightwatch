@@ -27,7 +27,7 @@ independent. Variety takes priority over increasing algorithmic difficulty.
   selector is fixture metadata, not a new product or public arbitrary-code service.
   Nikita owns live model/context validation; Timur owns Docker/UI integration.
 
-See [scenario inventory, commands and stop point](diverse-scenarios.md).
+See [scenario inventory, commands and stop point](../scenarios.md).
 
 ## NW-SCENARIOS-02: harder scenarios for the next checkpoint
 

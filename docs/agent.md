@@ -1,4 +1,4 @@
-# Nightwatch agent (Nikita's part)
+# Nightwatch agent
 
 The model only proposes: a hypothesis, a reproduction test and a patch. The `runner` executes them, the `verifier` decides.
 

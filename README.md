@@ -139,8 +139,8 @@ Sentry → Draft PR end to end: [integrations](docs/integrations.md) and the
 | `docs/` | Design and operating guides |
 
 Documentation: [agent design](docs/agent.md) · [verifier](docs/verifier.md) ·
-[Docker runner](docs/docker-runner.md) · [scenarios](docs/diverse-scenarios.md) ·
-[results](docs/results.md) · [decisions](docs/decisions.md)
+[Docker runner](docs/docker-runner.md) · [scenarios](docs/scenarios.md) ·
+[results](docs/results.md) · [all docs](docs/README.md)
 
 ## Limitations
 

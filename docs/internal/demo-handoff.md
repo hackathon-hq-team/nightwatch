@@ -6,7 +6,7 @@ contracts and acceptance commands are in [complex-scenarios.md](complex-scenario
 All application code is a local educational fixture; it is not a deployed service.
 
 For the revised checkpoint, use the optional **17-case diverse suite** described in
-[diverse-scenarios.md](diverse-scenarios.md). It adds six repairable incidents, three
+[diverse-scenarios.md](../scenarios.md). It adds six repairable incidents, three
 synthetic report cases and one repeated inventory incident. Install its HTTP requirements
 on the host and in Timur's test image before selecting `--suite diverse`. The commands
 below continue to describe the default seven-case suite.
@@ -63,7 +63,7 @@ packaging package; it does not need network access inside the container.
 
 The result contract and UI are unchanged. New scenario choices in the UI are a separate
 integration task if its selector is still fixed to the original pair. Confirm container
-execution and that saved incidents display correctly; follow [Docker setup](docker-runner.md).
+execution and that saved incidents display correctly; follow [Docker setup](../docker-runner.md).
 
 ## Verification boundary
 
