@@ -270,11 +270,17 @@ class Pipeline:
     def _fmt_hyp(h: Hypothesis) -> str:
         return f"- ({h.confidence:.0%}) {h.summary} [{', '.join(h.evidence_ids)}]"
 
-    def _files_for_patch(self, inc: Incident, limit: int = 5, max_chars: int = 30000) -> str:
+    def _files_for_patch(self, inc: Incident, limit: int = 8, max_chars: int = 30000) -> str:
+        """Full current content of the files the fix may touch: stack-trace files first, then the
+        modules they import that the context showed (the producer of bad data is often one)."""
         files = []
         for f in reversed([f for f in inc.alert.stacktrace if f.in_app]):
             if f.file not in files and not f.file.startswith("tests/"):
                 files.append(f.file)
+        for e in inc.evidence:
+            path = e.source.split("@", 1)[0]
+            if e.kind == "file" and "imported by" in e.source and path not in files:
+                files.append(path)
         parts = []
         for path in files[:limit]:
             text = self.repo.show(inc.alert.commit, path)

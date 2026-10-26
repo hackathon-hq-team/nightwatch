@@ -10,9 +10,10 @@ similar past incidents from history, and (optionally) known library issues from 
 """
 from __future__ import annotations
 
+import ast
 import json
 import subprocess
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .history import HistoryStore, summarize_for_memory
 from .schemas import Alert, Evidence
@@ -65,12 +66,47 @@ def _window(text: str, line: int | None, radius: int = 40) -> tuple[str, bool]:
     return "\n".join(f"{i + 1:4d}  {lines[i]}" for i in range(lo, hi)), True
 
 
+def local_imports(source: str, path: str, exists) -> list[str]:
+    """Repository files imported by `path` (absolute and relative imports), in import order.
+    `exists(p)` tells whether a repository path exists. Standard library and third-party imports
+    resolve to no repository file and are skipped."""
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    package = PurePosixPath(path).parent.parts
+    modules: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            modules += [a.name for a in node.names]
+        elif isinstance(node, ast.ImportFrom):
+            base = node.module or ""
+            if node.level:  # relative: from .x import y / from .. import z
+                parent = package[:len(package) - (node.level - 1)] if node.level > 1 else package
+                base = ".".join([*parent, *([base] if base else [])])
+            modules.append(base)
+            modules += [f"{base}.{a.name}" if base else a.name for a in node.names]  # from pkg import module
+    found: list[str] = []
+    for module in modules:
+        if not module:
+            continue
+        stem = module.replace(".", "/")
+        for candidate in (f"{stem}.py", f"{stem}/__init__.py"):
+            if candidate != path and candidate not in found and exists(candidate):
+                found.append(candidate)
+                break
+    return found
+
+
 def _is_secret(path: str) -> bool:
     low = path.lower()
     return any(h in low for h in SECRET_HINTS)
 
 
 class ContextBuilder:
+    MAX_RELATED_FILES = 4
+    MAX_RELATED_CHARS = 12000
+
     def __init__(self, repo: RepoView, history: HistoryStore | None = None, token_budget: int = 150_000,
                  web: WebSearch | None = None):
         self.repo = repo
@@ -129,6 +165,10 @@ class ContextBuilder:
             body, cut = _window(text, f.line)
             add("file", f"{f.file}@{alert.commit[:8]} (around line {f.line}, function {f.function})", body, cut)
 
+        # 5b. Modules imported by those files: a bug often comes from the code that produced the data
+        #     the failing function rejects, and that producer is not in the stack trace.
+        self._related_files(alert, seen, add)
+
         # 6. Known library issues from the web (only when the error points at a library)
         if self.web:
             self._web_evidence(alert, full_diff, add)
@@ -141,6 +181,32 @@ class ContextBuilder:
                 add("memory", f"{inc.id} (similarity {score})", summarize_for_memory(inc))
 
         return self._fit(items), similar_ids
+
+    def _related_files(self, alert: Alert, seen: set[str], add) -> None:
+        try:
+            tracked = set(self.repo.ls(alert.commit))
+        except RuntimeError:
+            return
+        related: list[tuple[str, str]] = []
+        for importer in list(seen):
+            text = self.repo.show(alert.commit, importer)
+            for path in local_imports(text or "", importer, tracked.__contains__):
+                if (path in seen or _is_secret(path) or path.startswith("tests/")
+                        or PurePosixPath(path).name == "__init__.py" or any(p == path for p, _ in related)):
+                    continue
+                related.append((path, importer))
+        for path, importer in related[:self.MAX_RELATED_FILES]:
+            text = self.repo.show(alert.commit, path)
+            if not text:
+                continue
+            seen.add(path)
+            body, _ = _window(text, None)
+            cut = len(body) > self.MAX_RELATED_CHARS
+            add("file", f"{path}@{alert.commit[:8]} (imported by {importer}; not in the stack trace)",
+                body[:self.MAX_RELATED_CHARS], cut)
+        if related:
+            self.notes.append("Related files imported by the failing code: "
+                              + ", ".join(p for p, _ in related[:self.MAX_RELATED_FILES]))
 
     def _web_evidence(self, alert: Alert, full_diff: str, add) -> None:
         pins: dict[str, str] = {}

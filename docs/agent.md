@@ -29,6 +29,19 @@ be lost on the way to a verified patch. Each is handled in code:
 - **Rejected hypotheses.** A hypothesis is stored as rejected only when the next investigation moves
   to another cause; a failed test alone is not evidence against it (it would mislead memory).
 
+## Context beyond the stack trace
+
+The function that raises is often only where bad data is detected; the code that produced it is
+not in the stack trace. After the stack-trace files, the context adds up to 4 repository modules
+those files import (absolute and relative imports, resolved with `ast`; standard library,
+third-party, `tests/` and `__init__.py` are skipped), marked "imported by …; not in the stack
+trace". The patch step gets their full content too, and the prompts say to fix where the wrong value
+is created, not where it is detected, and to cover every form the code's documentation lists.
+
+In the 24 Oct `diverse` run, `csv-producer-escaping` failed and `order-producer-total` was fixed in
+the wrong file because the producer was never shown. On the same suite the change adds a file only
+to those two scenarios; the other 15 contexts are unchanged.
+
 ## Model escalation
 
 Nemotron 3 Super does the work. After failures the pipeline switches to the escalation model
@@ -127,7 +140,7 @@ its category per scenario. Compare a run with and without it before turning it o
 | `nightwatch/schemas.py` | Shared models: `Alert`, `Evidence`, `Investigation`, `PatchProposal`, `RunResult`, `Verdict`, `Incident` |
 | `nightwatch/contracts.py` | `Runner` (Timur) and `Verifier` (Danik) interfaces |
 | `nightwatch/model_client.py` | Nemotron via Token Factory: schema-validated JSON, cut-off and transient-error retries, token accounting, budgets |
-| `nightwatch/context.py` | Evidence with ids `E1…`: stack trace, request, logs, diff, files, similar incidents |
+| `nightwatch/context.py` | Evidence with ids `E1…`: stack trace, request, logs, diff, stack-trace files, the repository modules they import, web results, similar incidents |
 | `nightwatch/history.py` | `history/inc-*.json` and similar-incident search (memory) |
 | `nightwatch/prompts.py` | Triage, investigation, patch and report prompts |
 | `nightwatch/edits.py` | Patch edits `{file, old, new}` → exact unified diff |
@@ -181,7 +194,7 @@ pytest -q                       # tests, no network or key needed
 
 ## Open questions
 
-- Context beyond the stack trace: bugs in a module the failing code imports are not shown to the
-  model yet.
+- Context goes one import level deep; a cause two modules away, or reached through dependency
+  injection rather than an import, is still not shown.
 - The Sentry SDK in the target project must set `release=<git sha>` and a `previous_release` tag,
   otherwise `sentry.py` cannot tell the version.

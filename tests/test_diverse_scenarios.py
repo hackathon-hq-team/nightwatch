@@ -96,13 +96,14 @@ def test_overfitted_repairs_do_not_pass_independent_answers(diverse, case):
 
 
 @pytest.mark.parametrize("case", CONTEXT_CASES, ids=lambda case: case["slug"])
-def test_cross_file_case_exposes_the_real_context_limit(diverse, case):
+def test_cross_file_case_shows_the_producer_only_through_imports(diverse, case):
     repo, alert, _ = case_inputs(diverse, case, reference=False)
     assert {frame.file for frame in alert.stacktrace if frame.in_app} == {case["failure_file"]}
     evidence, _ = ContextBuilder(RepoView(repo)).build(alert)
-    shown = {item.source.split("@")[0] for item in evidence if item.kind == "file"}
-    assert shown == {case["failure_file"]}
-    assert case["app_file"] not in shown
+    shown = {item.source.split("@")[0]: item.source for item in evidence if item.kind == "file"}
+    # The traceback names only the consumer; the producer reaches the model as an imported module.
+    assert set(shown) == {case["failure_file"], case["app_file"]}
+    assert f"imported by {case['failure_file']}" in shown[case["app_file"]]
     assert case["app_file"] not in alert.logs
     # A consumer-only bypass must not become an accepted producer repair.
     bypass = f"--- a/{case['failure_file']}\n+++ b/{case['failure_file']}\n@@ -1 +1 @@\n-old\n+new\n"
