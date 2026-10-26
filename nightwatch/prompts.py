@@ -26,6 +26,11 @@ Your job:
    reproduced by a unit/integration test, set repro_test to null and explain why in
    not_reproducible_reason.
 
+Where the bug is:
+- The function that raises is often only where bad data is DETECTED. If it validates input
+  produced elsewhere, look at the producer: files marked "imported by …; not in the stack trace"
+  are the modules the failing code uses. Name the module where the wrong value is created.
+
 Evidence discipline:
 - Recent changes in a diff are NOT automatically related to the alert. Link a change to the
   failure only if the stack trace, exception type, request or logs connect them.
@@ -80,6 +85,10 @@ Rules:
   change makes unused (variables, imports) in the same edits.
 - NEVER modify anything under tests/. The tests are the fixed acceptance criteria.
 - Fix the root cause; do not special-case the test input, do not swallow exceptions.
+- Fix where the wrong value is CREATED, not where it is detected: if a consumer rejects data a
+  producer built incorrectly, change the producer, not the consumer's checks.
+- If the code's docstring, comments or existing tests list several accepted forms or cases
+  (formats, suffixes, letter case, types), handle all of them, not only the one in the alert.
 - Keep the change under {max_lines} changed lines.
 - In evidence_ids cite the fragments that justify the fix. Web evidence alone does not justify a
   fix; prefer the smallest change in our code (e.g. adapting to the library's new behaviour)
