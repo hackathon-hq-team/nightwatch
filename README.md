@@ -104,7 +104,7 @@ actually relied on appear in the Draft PR as "Known upstream reports".
 Requires Python 3.11+, Git and, for the sandbox, Docker.
 
 ```bash
-git clone https://github.com/hackathon-hq-team/project-template.git nightwatch
+git clone https://github.com/hackathon-hq-team/nightwatch.git
 cd nightwatch
 python -m venv .venv && . .venv/bin/activate      # Windows: .venv\Scripts\Activate.ps1
 pip install -e ".[ui,webhook,test-integrations]"
