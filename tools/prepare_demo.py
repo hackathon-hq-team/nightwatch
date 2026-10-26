@@ -46,8 +46,10 @@ except Exception as error:
         path = Path(frame.filename).resolve()
         in_app = path.is_relative_to(root)
         name = path.relative_to(root).as_posix() if in_app else path.as_posix()
-        if not in_app and "/site-packages/" in name:
-            name = "site-packages/" + name.split("/site-packages/", 1)[1]
+        for packages in ("/site-packages/", "/dist-packages/"):  # dist-packages: Debian/Ubuntu Python
+            if not in_app and packages in name:
+                name = "site-packages/" + name.split(packages, 1)[1]
+                break
         frames.append({"file": name, "function": frame.name, "line": frame.lineno, "in_app": in_app})
     logs = "".join(traceback.format_exception(error))
     logs = logs.replace(str(root), ".").replace(str(Path(sys.prefix)), "[environment]")
