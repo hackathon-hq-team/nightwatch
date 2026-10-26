@@ -1,0 +1,41 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  offline:
+    name: Offline test suite (no network calls, no keys)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ".[webhook,test-integrations]"
+          pip install -r diverse-app/requirements.txt
+      - name: Configure git for fixture repositories
+        run: |
+          git config --global user.name "Nightwatch CI"
+          git config --global user.email "ci@example.invalid"
+          git config --global init.defaultBranch main
+      - name: Run tests
+        env:
+          NEBIUS_API_KEY: ""
+          TAVILY_API_KEY: ""
+          NIGHTWATCH_WEB_SEARCH: "0"
+        run: python -m pytest -q -p no:cacheprovider

@@ -1,5 +1,7 @@
 # Nightwatch
 
+[![tests](https://github.com/hackathon-hq-team/nightwatch/actions/workflows/tests.yml/badge.svg)](https://github.com/hackathon-hq-team/nightwatch/actions/workflows/tests.yml)
+
 **An open-source AI on-call engineer that never proposes a fix it has not reproduced and verified.**
 
 Nightwatch receives a production error from Sentry, investigates it with NVIDIA Nemotron on
