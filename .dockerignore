@@ -4,3 +4,5 @@
 !docker/
 !docker/runner/
 !docker/runner/Dockerfile
+!diverse-app/
+!diverse-app/requirements.txt
