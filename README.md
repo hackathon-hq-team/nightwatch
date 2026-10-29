@@ -62,19 +62,18 @@ These hold in every run and are enforced by code, not by the model:
 
 ## Results
 
-<!-- TODO: fill in from the final runs (docs/results.md) -->
-
-Measured on 24 scenarios with known answers, including cases that must end in a report rather than
-a fix. Two checks are reported separately: Nightwatch's own verdict, and **independent acceptance**
-with hidden tests the model never sees.
+Final runs on 28 October 2026 on the 17-scenario suite (HTTP endpoints, causes outside the
+stack trace, a misleading deploy diff, a library regression, cases that must end in a report),
+in the Docker sandbox with Tavily on. Two checks are reported separately: Nightwatch's own
+verdict, and **independent acceptance** with hidden tests the model never sees.
 
 | Measure | Result |
 | --- | --- |
-| Expected outcome reached (17-scenario suite) | TBD |
-| Verified fixes confirmed by hidden tests | TBD |
-| Correct refusals (no invented fix) | TBD |
-| Cost per incident | TBD |
-| Time per incident | TBD |
+| Expected outcome reached | **17 / 17**, and 17 / 17 again on a second run |
+| Verified fixes confirmed by hidden tests | **10 / 12** checked |
+| Correct refusals (no invented fix) | **4 / 4** |
+| Cost per incident | **$0.012** on average ($0.20 for all 17) |
+| Time per incident | **52 s** on average |
 
 Details, per-scenario numbers and every failure we found and fixed: [docs/results.md](docs/results.md).
 
