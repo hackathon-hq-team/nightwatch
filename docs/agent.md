@@ -60,8 +60,9 @@ Set `NIGHTWATCH_TRIAGE_MODEL` (e.g. `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`) to 
 look before the investigation. Nano classifies the failure (code bug, data, infrastructure, load),
 says whether it is likely reproducible and which evidence to read first. The result is stored in
 `Incident.triage`, logged as an event and passed to Super as a hint only — it never decides the
-outcome. A triage failure is logged and skipped; a budget stop still ends the incident. Off by
-default: keep it off until the evaluation shows it helps.
+outcome. A triage failure is logged and skipped; a budget stop still ends the incident. **Off by
+default:** in the 28 Oct A/B run on 17 scenarios it added 15 model calls and 26% more time for the
+same cost and one fewer expected outcome (16/17 vs 17/17), so it brings no benefit at this size.
 
 ## Patch format: edits, not diffs
 
