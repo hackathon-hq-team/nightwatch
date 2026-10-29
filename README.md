@@ -83,13 +83,26 @@ Details, per-scenario numbers and every failure we found and fixed: [docs/result
 | --- | --- | --- |
 | Main model | **NVIDIA Nemotron 3 Super** via **Nebius Token Factory** | Investigation, reproduction test, patch, report |
 | Escalation | **NVIDIA Nemotron 3 Ultra** | Takes over after repeated failures |
-| Triage (optional) | **NVIDIA Nemotron 3 Nano** | Cheap first look before the investigation |
+| Triage (optional) | **NVIDIA Nemotron 3 Nano** | Cheap first look; tested and kept off by default (no gain in our A/B run) |
 | Web search | **Tavily** | Known issues of the failing library, only when the error is raised inside one |
 | Isolation | Docker | Reproduction and verification without network or secrets |
 | Integrations | Sentry webhook, GitHub Draft PR, Streamlit console | Alert in, fix out, operator view |
 
 Every model call records its model, tokens and cost, so each incident shows exactly what it cost.
 The service runs locally in this submission; all model inference runs on Nebius Token Factory.
+
+### Where Nebius Token Factory accelerated our work
+
+- **No integration code.** Token Factory is OpenAI-compatible, so the model client is the standard
+  OpenAI SDK with a different base URL. JSON mode gave us schema-validated replies from day one.
+- **Model routing in one line.** Super, Ultra and Nano sit behind the same endpoint, so escalation
+  and triage are a different model id on a call, not a different provider.
+- **Cheap enough to iterate on live runs.** A full incident costs about $0.012 on Super, so the whole
+  17-scenario benchmark costs about $0.20. We ran it again after every fix — all our live benchmark
+  runs together cost under $1.50 — and traced each failure through the saved prompts and replies.
+  That loop is what took the 7-scenario suite from 4/7 to 7/7 and the 17-scenario suite to 17/17.
+- **Room for evidence.** Nemotron 3 Super's long context lets us pass up to ~150K tokens of stack
+  traces, logs, diffs and files without aggressive trimming.
 
 ### How Tavily is used
 
