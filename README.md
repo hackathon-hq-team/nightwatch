@@ -13,7 +13,7 @@ cannot be reproduced.
 Built for the Nebius × NVIDIA Global AI Hackathon 2026 · Track: Coding and Agentic Engineering ·
 License: [MIT](LICENSE)
 
-<!-- TODO: link to the demo video -->
+**[▶ Watch the 90-second demo](https://youtu.be/VHniWXpS4NA)** — a real Sentry alert becomes a verified Draft PR.
 
 ## The problem
 
