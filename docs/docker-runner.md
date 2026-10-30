@@ -23,7 +23,8 @@ NIGHTWATCH_TEST_DOCKER=1 python -m pytest -q tests/test_docker_runner.py
 ```
 
 Build requires network access. Execution never pulls images or installs dependencies.
-The initial image contains Python, git and pytest for the current calculator demo.
+The image contains Python, git, pytest and the scenario applications' test dependencies
+(pinned `diverse-app/requirements.txt` and `packaging`), installed at build time.
 For FastAPI/PostgreSQL projects, prepare a trusted image with their dependencies
 before execution and set `NIGHTWATCH_RUNNER_IMAGE` to its local tag. No image is built
 from model-provided Dockerfiles. PostgreSQL service integration is a separate step.
