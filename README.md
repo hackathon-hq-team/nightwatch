@@ -98,8 +98,9 @@ The service runs locally in this submission; all model inference runs on Nebius 
 - **Model routing in one line.** Super, Ultra and Nano sit behind the same endpoint, so escalation
   and triage are a different model id on a call, not a different provider.
 - **Cheap enough to iterate on live runs.** A full incident costs about $0.012 on Super, so the whole
-  17-scenario benchmark costs about $0.20. We ran it again after every fix — all our live benchmark
-  runs together cost under $1.50 — and traced each failure through the saved prompts and replies.
+  17-scenario benchmark costs about $0.20. We ran it again after every fix — the whole team's model
+  usage during the hackathon came to about $5 — and traced each failure through the saved prompts
+  and replies.
   That loop is what took the 7-scenario suite from 4/7 to 7/7 and the 17-scenario suite to 17/17.
 - **Room for evidence.** Nemotron 3 Super's long context lets us pass up to ~150K tokens of stack
   traces, logs, diffs and files without aggressive trimming.
